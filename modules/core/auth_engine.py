@@ -132,18 +132,19 @@ class AuthEngine:
         """)
         conn.commit()
 
-        # Seed default admin accounts if no users exist
-        cursor.execute("SELECT COUNT(*) FROM users")
-        if cursor.fetchone()[0] == 0:
-            now = datetime.now().isoformat()
-            default_admins = [
-                ("admin",     "Administrator", "admin123"),
-                ("kina",      "Kina",          "admin123"),
-                ("hongquan",  "Hong Quan",     "admin123"),
-                ("ducthuan",  "Duc Thuan",     "admin123"),
-            ]
-            with conn:
-                for uname, dname, pwd in default_admins:
+        # Seed default admin accounts (INSERT OR IGNORE — safe on existing DBs)
+        now = datetime.now().isoformat()
+        default_admins = [
+            ("admin",     "Administrator", "admin123"),
+            ("kina",      "Kina",          "admin123"),
+            ("hongquan",  "Hong Quan",     "admin123"),
+            ("ducthuan",  "Duc Thuan",     "admin123"),
+        ]
+        with conn:
+            for uname, dname, pwd in default_admins:
+                # Only insert if username doesn't already exist
+                cursor.execute("SELECT id FROM users WHERE username = ?", (uname,))
+                if cursor.fetchone() is None:
                     pw_hash, salt = _hash_password(pwd)
                     cursor.execute(
                         "INSERT INTO users "
