@@ -1,0 +1,20 @@
+# ============================================================
+#  requirements.txt — Employee Analytic System
+#  Generated: 2026-03-09
+# ============================================================
+
+# Web framework
+streamlit==1.54.0
+
+# Data processing
+pandas==3.0.1
+numpy==2.3.3
+
+# Visualization
+plotly==6.5.2
+
+# PDF report generation
+fpdf2==2.8.7
+
+# Google Generative AI (LLM engine)
+google-genai==1.65.0

@@ -1,0 +1,566 @@
+from typing import Dict, Any
+
+STRINGS = {
+    "en": {
+        # ==========================================================================
+        # APP & NAVIGATION
+        # ==========================================================================
+        "app_title": "Employee Analytics System",
+        "brand_name": "THE <span style='color: var(--accent-orange);'>TRANSFORMERS</span>",
+        "brand_sub": "Data Engineering Hub",
+        "footer_text": "© 2026 THE TRANSFORMERS | DATA ARCHITECT SOLUTION",
+        "overview": "Project Overview",
+        "data_audit": "Data Integrity Audit",
+        "preprocessing": "Preprocessing",
+        "eda": "Visual Intelligence",
+        "feature_prep": "Feature Preparation",
+        "user_management": "User Management",
+        "nav_system": "SYSTEM",
+        "nav_analytics": "ANALYTICS",
+        "nav_management": "MANAGEMENT",
+
+        # ==========================================================================
+        # PAGE TITLES & SUBTITLES
+        # ==========================================================================
+        "home_title": "System Overview & Data Catalog",
+        "home_subtitle": "Decoding Social Dynamics and Economic Outcomes through Labor Data",
+        "home_box1": "Unlock deep insights into the socioeconomic factors driving individual income levels and labor market demographics.",
+        "home_box2": "Empower policy makers and researchers with evidence-based insights into income inequality, educational returns, and workforce structures.",
+        "data_audit_title": "Data Integrity Audit",
+        "preprocessing_title": "Preprocessing",
+        "eda_title": "Visual Intelligence",
+        "user_management_title": "User Management",
+        "user_management_subtitle": "Manage user accounts and permissions.",
+
+        # ==========================================================================
+        # AUTH & USER
+        # ==========================================================================
+        "login": "Login",
+        "logout": "Logout",
+        "username": "Username",
+        "password": "Password",
+        "old_password": "Current Password",
+        "new_password": "New Password",
+        "confirm_password": "Confirm Password",
+        "change_password": "Change Password",
+        "profile": "Profile",
+        "edit_profile": "Edit Profile",
+        "display_name": "Display Name",
+        "role": "Role",
+        "role_admin": "Admin",
+        "role_user": "User",
+        "avatar": "Avatar",
+        "login_btn": "SIGN IN",
+        "login_welcome": "Welcome Back",
+        "login_instruction": "Sign in to access the analytics platform.",
+        "login_failed": "Invalid username or password.",
+        "login_success": "Login successful!",
+        "logout_success": "You have been logged out.",
+        "password_changed": "Password changed successfully!",
+        "password_mismatch": "New passwords do not match.",
+        "password_wrong": "Current password is incorrect.",
+        "profile_updated": "Profile updated successfully!",
+        "user_created": "User '{username}' created successfully!",
+        "user_deleted": "User '{username}' deleted successfully!",
+        "user_exists": "Username '{username}' already exists.",
+        "cannot_delete_self": "You cannot delete your own account.",
+        "cannot_delete_last_admin": "Cannot delete the last administrator account. Assign another admin first.",
+        "cannot_demote_self": "You cannot change your own role. Ask another admin to do this.",
+        "password_too_short": "Password must be at least 6 characters long.",
+        "user_not_found": "User not found.",
+        "add_user": "Add",
+        "cancel": "Cancel",
+        "edit_user": "Edit",
+        "delete_user": "Delete",
+        "confirm_delete_user": "Are you sure you want to delete user '{username}'?",
+        "total_users": "Total Users",
+        "users_count": "{count} users",
+        "search_users": "Search by username or name...",
+        "created_at": "Created",
+        "no_users_found": "No users match your search.",
+        "access_denied": "Access denied. Admin privileges required.",
+        "select_role": "Select Role",
+        "ai_assistant": "AI Assistant",
+
+
+        # ==========================================================================
+        # LANGUAGE
+        # ==========================================================================
+        "language": "Language",
+        "lang_en": "English",
+        "lang_vi": "Tiếng Việt",
+
+        # ==========================================================================
+        # DATA LIBRARY & OVERVIEW
+        # ==========================================================================
+        "upload_file": "UPLOAD FILE",
+        "search_placeholder": "Search by file name...",
+        "total_assets": "Total Assets",
+        "files_count": "{count} files",
+        "welcome_title": "Welcome, Architect.",
+        "welcome_subtitle": "Select a data module to begin your analysis.",
+        "system_ready": "SYSTEM READY",
+        "select_module": "Select a module to analyze",
+        "no_data_loaded": "No data loaded",
+        "rows": "Rows",
+        "columns": "Columns",
+        "memory": "Memory",
+        "duplicates": "Duplicates",
+        "missing_data": "Missing Data",
+        "preview_dataset": "Preview Dataset",
+        "close_preview": "Close Preview",
+        "file_name": "FILE NAME",
+        "size": "SIZE",
+        "date": "DATE",
+        "actions": "ACTIONS",
+        "previous": "Previous",
+        "next": "Next",
+        "page_info": "Page {current} of {total}",
+        "upload_instruction": "Select a CSV file to upload to the system (Max 200MB).",
+        "success_upload": "File uploaded successfully!",
+        "error_upload": "Error uploading file: {error}",
+        "confirm_delete": "Are you sure you want to delete {filename}?",
+        "delete": "Delete",
+        "active": "Active",
+        "preview": "Preview",
+        "no_files_match": "No files match your search criteria.",
+        "current_workspace": "CURRENT WORKSPACE",
+        "select_dataset_first": "Please select a dataset from the **{page}** page to begin.",
+        "empty_state_msg": "Upload or activate a dataset from the Overview page to get started.",
+        "snapshot_no_change": "— no change",
+        "chat_greeting": "How can I help you today?",
+        "chat_placeholder": "Ask about your data...",
+        "chat_thinking": "AI is thinking...",
+
+        # ==========================================================================
+        # OVERVIEW — FEATURE NAVIGATION
+        # ==========================================================================
+        "overview_section_journey": "The 4-Step Analytical Journey",
+        "overview_journey_audit_title": "Data Audit",
+        "overview_journey_audit_desc": "Evaluating data integrity through comprehensive profiling of anomalies, missing markers, and statistical outliers.",
+        "overview_journey_preprocess_title": "Preprocessing",
+        "overview_journey_preprocess_desc": "Sanitizing the workforce dataset to resolve technical inconsistencies and mitigate the impact of unknown values.",
+        "overview_journey_eda_title": "Visual EDA",
+        "overview_journey_eda_desc": 'Discovering socio-economic trends and income distributions through interactive exploratory data analysis.',
+        "overview_journey_feat_title": "Feature Preparation",
+        "overview_journey_feat_desc": "Constructing a model-ready feature space through categorical encoding and numerical standardization.",
+        "overview_col_anatomy": "Scope and Nature of the Dataset",
+        "overview_col_objectives": "Analysis Objectives",
+        "overview_records_suffix": "RECORDS",
+        "overview_anatomy_quant_title": "Quantitative Variables",
+        "overview_anatomy_quant_tags": "Age,Education_Num,Hours_per_Week",
+        "overview_anatomy_quant_note": "Measures of experience and labor intensity.",
+        "overview_anatomy_cat_title": "Categorical Variables",
+        "overview_anatomy_cat_prof_label": "Professional Context",
+        "overview_anatomy_cat_prof_tags": "Workclass,Occupation",
+        "overview_anatomy_cat_demo_label": "Socio-Demographic",
+        "overview_anatomy_cat_demo_tags": "Education,Race,Sex,Native_Country",
+        "overview_anatomy_cat_fam_label": "Family & Household",
+        "overview_anatomy_cat_fam_tags": "Marital_Status,Relationship",
+        "overview_anatomy_fin_title": "Financial Variables",
+        "overview_anatomy_fin_tags": "Capital Gain,Capital Loss",
+        "overview_anatomy_fin_note": "Note: These represent income earned outside traditional salaries (investments/assets).",
+        "overview_anatomy_target_title": "Target Variable",
+        "overview_anatomy_target_label": "Income Class:",
+        "overview_anatomy_target_value": ">50K,≤50K",
+        "overview_obj_grp1_title": "Business-Standard Refinement",
+        "overview_obj_grp1_1_title": "Income Profiling",
+        "overview_obj_grp1_1_desc": "What are the defining demographic and professional characteristics that distinguish High Earners (>$50K) from Standard Earners (≤50K)?",
+        "overview_obj_grp1_2_title": "Labor Productivity",
+        "overview_obj_grp1_2_desc": "To what extent does labor intensity (measured by Hours-per-week) correlate with the probability of crossing the high-income threshold?",
+        "overview_obj_grp1_3_title": "Human Capital Synergy",
+        "overview_obj_grp1_3_desc": "How does the intersection of \"Professional Maturity\" (Prime Age) and \"Educational Attainment\" influence an individual’s financial success?",
+        "overview_obj_grp1_4_title": "Socio-Economic Stability",
+        "overview_obj_grp1_4_desc": "What is the statistical correlation between domestic stability (Marital Status/Relationship) and an individual's earning outcomes?",
+        "overview_obj_grp1_5_title": "Occupational Wealth Probability",
+        "overview_obj_grp1_5_desc": "Which professional sectors and occupations demonstrate the highest density of high-income individuals?",
+        
+        "overview_obj_grp2_title": "Gender & Marital Insights",
+        "overview_obj_grp2_1_title": "Gender Pay Gap & Equity",
+        "overview_obj_grp2_1_desc": "Is there a significant income disparity between genders when controlling for education levels and occupation types?",
+        "overview_obj_grp2_2_title": "The \"Marriage Premium\" Analysis",
+        "overview_obj_grp2_2_desc": "How does marital status (Married vs. Single/Divorced) impact the likelihood of reaching high-income status across different age groups?",
+        "overview_obj_grp2_3_title": "Household Role Dynamics",
+        "overview_obj_grp2_3_desc": "How do different household roles (e.g., Husband/Wife vs. Unmarried/Own-child) influence the distribution of income and working hours?",
+
+        # ==========================================================================
+        # FEATURE CARDS
+        # ==========================================================================
+        "card_audit_desc": "Automated integrity inspection and outlier detection.",
+        "card_preprocessing_desc": "High-performance vectorized data cleaning pipeline.",
+        "card_eda_desc": "Explore workforce trends through visual distributions.",
+
+        # ==========================================================================
+        # DATA AUDIT
+        # ==========================================================================
+        "scanning": "Scanning dataset integrity...",
+        "health_score": "Data Health Overview",
+        "integrity_rating": "Integrity Rating",
+        "critical_issues": "Critical Issues",
+        "missing_cells": "Missing Cells",
+        "duplicate_rows": "Duplicate Rows",
+        "outlier_flags": "Outlier Flags",
+        "inconsistencies": "Inconsistencies",
+        "audit_report": "Audit Report",
+        "download_report": "Download Report",
+        "distribution_analysis": "Distribution Analysis",
+        "correlation_matrix": "Correlation Matrix",
+        "outlier_detection": "Outlier Detection",
+        "field_integrity": "Field Level Integrity",
+        "issue_composition": "Issue Composition (% of Total Values)",
+        "generate_report": "Generate Full Report",
+        "report_generated": "Report generated successfully!",
+        "processing_data": "Processing data...",
+        "total_records": "Total Records",
+        "data_density": "Data Density",
+        "weighted_index": "Weighted Index",
+        "fill_rate": "Fill Rate",
+        "null_values": "Null Values",
+        "redundant_rows": "Redundant Rows",
+
+        # Audit section captions & labels
+        "issue_composition_caption": "Breakdown of all detected data quality issues across the dataset.",
+        "field_integrity_caption": "Column-level health assessment and numeric distribution analysis.",
+        "correlation_caption": "Pairwise Pearson correlation of numeric attributes.",
+        "risk_inspector_caption": "Select a column and detection method to view flagged outlier rows.",
+        "no_numeric_distribution": "No numeric columns available for distribution analysis.",
+        "no_numeric_correlation": "Not enough numeric columns for correlation analysis.",
+        "select_numeric_column": "Select a numeric column above to begin inspection.",
+        "skewness_report": "Skewness Report",
+        "risk_records_inspector": "Risk Records Inspector",
+        "select_column": "Select Column",
+        "detection_method": "Detection Method",
+        "categorical_consistency": "Categorical Consistency Check",
+        "all_consistent": "All categorical columns are consistent.",
+        "noise_values": "Noise Values",
+        "data_quality_caption": "Detailed breakdown of categorical inconsistencies and detected noise values (e.g. ?, -, N/A, whitespace-only).",
+        "quality_matrix_note": (
+            "- **Completeness:** % non-empty/non-noise\n"
+            "- **Validity:** % values within admin-defined safe zones (100% when no safe zone configured)\n"
+            "- **Consistency:** Category casing/spacing integrity"
+        ),
+        "noise_values_caption": "Detected placeholder or corrupted values (e.g. ?, -, N/A, whitespace-only).",
+        "no_noise_found": "No noise values detected in the dataset.",
+        "noise_metric_subtitle": "Dirty Cells",
+        "flagged_rows": "{count} flagged rows",
+        "column_label": "Column: {col}",
+        "method_label": "Method: {method}",
+        "no_outliers_detected": "No outliers detected in **{col}** using **{method}**.",
+        "hint_iqr": "Q1 − 1.5·IQR … Q3 + 1.5·IQR — Robust, non-parametric",
+        "hint_zscore": "Mean ± 3·Std — Best for normally distributed data",
+        "hint_modified_zscore": "Median ± 3·MAD — Robust against skewed data",
+        "data_preview": "Data Preview",
+        "column_analysis": "Column Analysis",
+        "loading": "Loading...",
+        "smart_recommendation": "Smart Recommendation",
+        "rec_zscore": "Data is symmetric (|skew| < 0.5). Z-Score is recommended.",
+        "rec_iqr": "Data is moderately skewed. IQR is recommended.",
+        "rec_mod_z": "Data is highly skewed (|skew| > 1.0). Modified Z-Score is recommended.",
+        "safe_zone_outlier_note": "Values within safe zones are trusted and ignored.",
+
+
+
+        # Output text values for Audit Engine (Suggestions & Matrix)
+        "sug_drop_impute": "Drop column or impute",
+        "sug_fill_missing": "Fill missing (mean/median/mode)",
+        "sug_clean_noise": "Clean noise values",
+        "sug_review_noise": "Review noise entries",
+        "sug_cap_remove": "Cap or remove outliers",
+        "sug_investigate_outliers": "Investigate outliers",
+        "sug_fix_whitespace": "Fix whitespace",
+        "sug_fix_casing": "Fix casing",
+        "sug_log_transform": "Log-transform",
+        "sug_safe_zone": "Values outside safe zone — clamp or investigate",
+        "sug_ok": "✓ OK",
+
+        "issue_mixed_casing": "Mixed Casing",
+        "issue_whitespace": "Leading/Trailing Whitespace",
+        "issue_noise_mixed": "Noise Mixed With Data",
+        "issue_rare_singletons": "Rare Singletons",
+        "issue_mixed_units": "Mixed Measurement Units",
+        "issue_date_formats": "Inconsistent Date Formats",
+
+        "dim_completeness": "Completeness",
+        "dim_validity": "Validity",
+        "dim_consistency": "Consistency",
+        
+        "compose_missing": "Missing Values",
+        "compose_duplicates": "Duplicate Rows",
+        "compose_outliers_iqr": "Outlier Flags (IQR)",
+        "compose_inconsistencies": "Inconsistencies",
+        "compose_noise_values": "Noise Values",
+
+        # ==========================================================================
+        # PREPROCESSING & FEATURE ENGINEERING
+        # ==========================================================================
+        "feature_prep_title": "Feature Preparation",
+        "optimization_complete": "Optimization complete!",
+        "cleaning_wizard": "Data Cleaning Wizard",
+        "step_basic": "1. Basic Cleaning",
+        "step_outliers": "2. Statistical Treatment",
+        "step_transform": "3. Feature Transformation",
+        "drop_duplicates": "Drop Duplicates",
+        "fill_missing": "Fill Missing Values",
+        "handle_outliers": "Handle Outliers",
+        "encoding": "Feature Encoding",
+        "scaling": "Feature Scaling",
+        "run_cleaning": "RUN CLEANING",
+        "save_dataset": "SAVE DATASET",
+        "apply_transform": "APPLY TRANSFORM",
+        "before": "Before",
+        "after": "After",
+        "cleaned_suffix": "_cleaned",
+        "confirm_save": "Dataset saved successfully as {filename}",
+        "ready_for_processing": "READY FOR PROCESSING",
+        "processing": "PROCESSING...",
+        "columns_dropped": "{count} columns dropped",
+        "rows_dropped": "{count} rows dropped",
+        "no_missing_values": "No missing values found.",
+        "no_numeric_outliers": "No numeric columns available for outlier treatment.",
+        "no_categorical_cols": "No categorical columns found.",
+        "no_numeric_cols": "No numeric columns found.",
+        "select_columns": "Select columns",
+        "method": "Method",
+        "select_column_treat": "Select Column to Treat",
+        "threshold": "Threshold",
+        "select_categorical": "Select Categorical Columns",
+        "encoding_method": "Encoding Method",
+        "select_numeric": "Select Numeric Columns",
+        "scaling_method": "Scaling Method",
+        "categorical_dist_original": "Categorical distribution (Original)",
+        "categorical_dist_cleaned": "Categorical distribution (Cleaned)",
+        "rerun_audit": "RE-RUN AUDIT",
+
+        # --- Method Labels (Preprocessing) ---
+        "method_drop_rows": "Drop Rows",
+        "method_drop_rows_desc": "Remove rows that contain any missing values in the selected columns",
+        "method_fill_mean": "Fill with Mean",
+        "method_fill_mean_desc": "Replace missing values with the column's average (numeric only)",
+        "method_fill_median": "Fill with Median",
+        "method_fill_median_desc": "Replace missing values with the column's median (numeric only)",
+        "method_fill_mode": "Fill with Mode",
+        "method_fill_mode_desc": "Replace missing values with the most frequent value",
+        "method_ffill": "Forward Fill",
+        "method_ffill_desc": "Propagate the last valid value forward to fill gaps",
+        "method_bfill": "Backward Fill",
+        "method_bfill_desc": "Propagate the next valid value backward to fill gaps",
+        "method_iqr_capping": "IQR Capping",
+        "method_iqr_capping_desc": "Cap extreme values using Interquartile Range boundaries",
+        "method_zscore_removal": "Z-Score Removal",
+        "method_zscore_removal_desc": "Remove rows where the Z-score exceeds the threshold",
+        "method_one_hot": "One-Hot Encoding",
+        "method_one_hot_desc": "Create binary columns for each category value",
+        "method_ordinal": "Ordinal Encoding",
+        "method_ordinal_desc": "Map categories to integer codes (0, 1, 2, …)",
+        "method_standard": "Standardization (Z-Score)",
+        "method_standard_desc": "Scale to zero mean and unit variance",
+        "method_minmax": "Min-Max Normalization",
+        "method_minmax_desc": "Scale values to the [0, 1] range",
+        "method_noise_drop": "Drop Noise Rows",
+        "method_noise_drop_desc": "Remove entire rows containing garbage/placeholder values",
+        "method_noise_replace_nan": "Replace with NaN",
+        "method_noise_replace_nan_desc": "Convert noise values to NaN for later imputation",
+        "method_noise_replace_mode": "Replace with Mode",
+        "method_noise_replace_mode_desc": "Replace noise with the most frequent clean value",
+
+        # ==========================================================================
+        # EDA / VISUAL INTELLIGENCE
+        # ==========================================================================
+        "eda_section_kpi": "Executive Summary",
+        "eda_section_kpi_caption": "Key workforce metrics at a glance.",
+        "eda_kpi_total": "Total Employees",
+        "eda_kpi_total_sub": "Records",
+        "eda_kpi_avg_age": "Average Age",
+        "eda_kpi_avg_age_sub": "Years",
+        "eda_kpi_income_high": "Income >50K",
+        "eda_kpi_income_high_sub": "High Earners",
+        "eda_kpi_top_occ": "Top Occupation",
+        "eda_kpi_top_occ_sub": "Most Common",
+        "eda_kpi_avg_hours": "Avg Hours/Week",
+        "eda_kpi_avg_hours_sub": "Work Hours",
+        "eda_kpi_countries": "Countries",
+        "eda_kpi_countries_sub": "Represented",
+
+        "eda_section_demographics": "Demographic Panorama",
+        "eda_section_demographics_caption": "Explore the age, gender, race, and relationship composition of the workforce.",
+        "eda_tab_age": "Age Distribution",
+        "eda_tab_gender_race": "Gender & Race",
+        "eda_tab_marital": "Marital & Relationship",
+
+        "eda_section_workforce": "Workforce & Education Intelligence",
+        "eda_section_workforce_caption": "Understand the education, occupation, and employment landscape.",
+        "eda_tab_education": "Education Ladder",
+        "eda_tab_occupation": "Occupation Map",
+        "eda_tab_workclass": "Workclass Breakdown",
+
+        "eda_section_income": "Income Deep Dive",
+        "eda_section_income_caption": "Analyze income distribution and its relationship with other features.",
+        "eda_tab_income_overview": "Income Split",
+        "eda_tab_income_cross": "Cross Analysis",
+        "eda_select_feature": "Select Feature",
+
+        "eda_section_financial": "Financial Indicators",
+        "eda_section_financial_caption": "Capital gain and loss patterns across the workforce.",
+        "eda_tab_capital_gain": "Capital Gain",
+        "eda_tab_capital_loss": "Capital Loss",
+        "eda_nonzero_only": "Non-zero values only",
+
+        "eda_section_worklife": "Work-Life Balance",
+        "eda_section_worklife_caption": "Working hours distribution and its impact on income.",
+
+        "eda_section_geo": "Geographic Intelligence",
+        "eda_section_geo_caption": "Country-level employee distribution and income patterns.",
+        "eda_top_n_countries": "Top N Countries",
+
+        "eda_section_multivariate": "Multivariate Explorer",
+        "eda_section_multivariate_caption": "Discover hidden relationships through correlation and multi-dimensional views.",
+        "eda_tab_correlation": "Correlation Heatmap",
+        "eda_tab_sunburst": "Hierarchical View",
+        "eda_tab_scatter": "Feature Explorer",
+        "eda_select_x": "X-Axis",
+        "eda_select_y": "Y-Axis",
+        "eda_select_color": "Color By",
+
+        # ==========================================================================
+        # ADMIN SETTINGS
+        # ==========================================================================
+        "admin_settings": "Analytic Rule Settings",
+        "admin_settings_title": "Analytic Rule Settings",
+        "admin_settings_subtitle": "Manage schema definitions, outlier thresholds, safe zones, and noise patterns.",
+        "admin_access_denied": "Access denied. Admin privileges required.",
+        "admin_save_success": "Configuration saved successfully!",
+        "admin_schema_title": "Employee Schema Definition",
+        "admin_schema_caption": "Define the expected columns, data types, and categories for uploaded datasets.",
+        "admin_outlier_title": "Outlier Detection Configuration",
+        "admin_outlier_caption": "Set the detection method and global threshold for outlier analysis.",
+        "admin_outlier_method": "Detection Method",
+        "admin_outlier_threshold": "Global Threshold",
+        "admin_outlier_method_iqr": "IQR (Interquartile Range)",
+        "admin_outlier_method_zscore": "Z-Score",
+        "admin_outlier_method_modified_zscore": "Modified Z-Score",
+        "admin_safe_zones_title": "Numeric Safe Zones",
+        "admin_safe_zones_caption": "Define acceptable min/max ranges for numeric columns. Values outside these ranges will be flagged.",
+        "admin_noise_title": "Noise Patterns",
+        "admin_noise_caption": "One pattern per line. These values will be treated as noise/placeholder data during audits.",
+        "admin_noise_label": "Noise Patterns (one per line)",
+        "admin_tab_schema": "Schema",
+        "admin_tab_outlier": "Outliers",
+        "admin_tab_safe_zones": "Safe Zones",
+        "admin_tab_noise": "Noise",
+        "admin_col_name": "Column Name",
+        "admin_col_dtype": "Data Type",
+        "admin_col_category": "Category",
+        "admin_col_safe_min": "Safe Min",
+        "admin_col_safe_max": "Safe Max",
+        "admin_btn_save_schema": "Save Schema",
+        "admin_btn_save_outlier": "Save Outlier Config",
+        "admin_btn_save_safe": "Save Safe Zones",
+        "admin_btn_save_noise": "Save Noise Patterns",
+        "admin_btn_reset": "Reset to Default",
+        "admin_btn_confirm_reset": "Confirm Reset",
+        "admin_reset_confirm": "This will overwrite ALL rules with factory defaults. Are you sure?",
+        "admin_reset_success": "All rules have been reset to defaults.",
+
+        # --- Data Audit: Schema & Safe Zone sections ---
+        "schema_validation_title": "Schema Validation",
+        "schema_validation_caption": "Cross-reference uploaded columns against the admin-defined employee schema.",
+        "schema_pass": "Schema validation passed — all columns match the expected definition.",
+        "schema_no_rule": "No schema rule configured. Configure one in Admin Settings.",
+        "schema_missing_cols": "Missing Columns",
+        "schema_extra_cols": "Extra Columns",
+        "schema_type_mismatches": "Type Mismatches",
+        "safe_zone_title": "Safe Zone Violations",
+        "safe_zone_caption": "Numeric values falling outside the admin-defined acceptable ranges.",
+        "safe_zone_pass": "All numeric values are within the defined safe zones.",
+
+        # ==========================================================================
+        # DATA AUDIT — additional badge / label strings
+        # ==========================================================================
+        "audit_data_inconsistency": "Data Inconsistency",
+        "audit_inconsistent_cells": "Inconsistent Cells",
+        "audit_no_issue_data": "No data available for issue composition.",
+        "audit_dataset_cells": "Dataset: {n:,} cells",
+        "audit_affected_pct": "{pct:.2f}% affected ({n:,} cells)",
+        "audit_clean_pct": "{pct}% clean",
+        "audit_violations": "{n:,} violations",
+        "audit_cols_affected": "{n} columns affected",
+        "audit_issues_detected": "{n} issues detected",
+        "audit_total_cells_impacted": "{n:,} total cells impacted",
+        "audit_noise_values_count": "{n:,} noise values",
+        "audit_actionable_suggestions": "Actionable Suggestions",
+        "audit_all_fields_pass": "All fields pass integrity checks. No critical actions required.",
+        "audit_not_enough_quality": "Not enough data to generate quality matrix.",
+        "audit_data_quality_matrix": "Data Quality Matrix",
+        "audit_top_correlations": "Top Correlations",
+        "audit_no_correlation_pairs": "No valid correlation pairs to display.",
+        "corr_method_label": "Method",
+        "corr_hide_weak": "Hide weak correlations (|r| <)",
+        "corr_strong": "Strong |r|≥0.7 — {n} pairs",
+        "corr_moderate": "Moderate 0.4≤|r|<0.7 — {n} pairs",
+        "corr_weak": "Weak |r|<0.4 — {n} pairs",
+        "audit_download_pdf": ":material/picture_as_pdf: Download PDF Report",
+
+        # ==========================================================================
+        # EDA — insight card stat labels
+        # ==========================================================================
+        "eda_stat_median_age": "Median Age",
+        "eda_stat_youngest": "Youngest",
+        "eda_stat_oldest": "Oldest",
+        "eda_stat_std_dev": "Std Dev",
+        "eda_stat_mean": "Mean",
+        "eda_stat_median": "Median",
+        "eda_stat_max": "Max",
+        "eda_stat_nonzero_count": "Non-zero Count",
+        "eda_pct_of_total": "{pct:.1f}% of total workforce",
+        "eda_pct_of_workforce": "{pct:.1f}% of workforce",
+        "eda_bracket_parttime": "Part-time (<35h)",
+        "eda_bracket_standard": "Standard (35–45h)",
+        "eda_bracket_overtime": "Overtime (>45h)",
+        "eda_col_not_found": "Column not found in dataset.",
+
+        # ==========================================================================
+        # FEATURE PREPARATION — section labels
+        # ==========================================================================
+        "feat_categorical_encoding": "Categorical Encoding",
+        "feat_numeric_scaling": "Numeric Scaling",
+        "feat_encode_btn": "Encode Features",
+        "feat_scale_btn": "Scale Features",
+        "feat_no_cat_cols": "No categorical columns remaining. Your data is fully numeric.",
+        "feat_no_num_cols_scale": "No numeric columns available for scaling.",
+    }
+}
+
+
+def get_text(key: str, lang: str = 'en', **kwargs) -> str:
+    """
+    Retrieves a localized string for the given key.
+
+    Args:
+        key (str): The key for the text string.
+        lang (str): The language code ('en' or 'vi'). Defaults to 'en'.
+        **kwargs: Optional variables to format the string.
+
+    Returns:
+        str: The localized and formatted string.
+    """
+    lang_dict = STRINGS.get(lang, STRINGS['en'])
+    text = lang_dict.get(key, f"[{key}]")
+    
+    if kwargs and "{" in text and "}" in text:
+        try:
+            return text.format(**kwargs)
+        except KeyError:
+            return text
+            
+    return text
+
+
+def get_method_labels(method_keys: list, lang: str = 'en') -> dict:
+    """
+    Build a {method_key: (label, description)} dict from localization strings.
+    Usage: get_method_labels(["drop_rows", "fill_mean", ...], lang)
+    """
+    return {
+        k: (get_text(f"method_{k}", lang), get_text(f"method_{k}_desc", lang))
+        for k in method_keys
+    }

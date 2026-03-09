@@ -1,0 +1,32 @@
+# ============================================================
+#  .gitattributes — Force LF line endings in the repository
+# ============================================================
+
+# Default: normalize all text files to LF on commit
+* text=auto eol=lf
+
+# Explicitly enforce LF for source files
+*.py    text eol=lf
+*.txt   text eol=lf
+*.md    text eol=lf
+*.toml  text eol=lf
+*.json  text eol=lf
+*.yaml  text eol=lf
+*.yml   text eol=lf
+*.css   text eol=lf
+*.html  text eol=lf
+*.js    text eol=lf
+
+# Binary files — no line ending conversion
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+*.pdf   binary
+*.db    binary
+*.sqlite binary
