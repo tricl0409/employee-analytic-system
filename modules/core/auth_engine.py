@@ -132,18 +132,25 @@ class AuthEngine:
         """)
         conn.commit()
 
-        # Seed default admin if no users exist
+        # Seed default admin accounts if no users exist
         cursor.execute("SELECT COUNT(*) FROM users")
         if cursor.fetchone()[0] == 0:
-            pw_hash, salt = _hash_password("admin123")
             now = datetime.now().isoformat()
+            default_admins = [
+                ("admin",     "Administrator", "admin123"),
+                ("kina",      "Kina",          "admin123"),
+                ("hongquan",  "Hong Quan",     "admin123"),
+                ("ducthuan",  "Duc Thuan",     "admin123"),
+            ]
             with conn:
-                cursor.execute(
-                    "INSERT INTO users "
-                    "(username, display_name, role, password_hash, password_salt, avatar_url, created_at, updated_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    ("admin", "Administrator", "admin", pw_hash, salt, "", now, now)
-                )
+                for uname, dname, pwd in default_admins:
+                    pw_hash, salt = _hash_password(pwd)
+                    cursor.execute(
+                        "INSERT INTO users "
+                        "(username, display_name, role, password_hash, password_salt, avatar_url, created_at, updated_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        (uname, dname, "admin", pw_hash, salt, "", now, now)
+                    )
 
     # ------------------------------------------------------------------
     # LOGIN / LOGOUT
