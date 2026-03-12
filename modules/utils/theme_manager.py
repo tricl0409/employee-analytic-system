@@ -4,7 +4,7 @@ from typing import Dict
 STATUS_COLORS = {
     "success":  {"hex": "#A6CE39", "rgba": "rgba(166, 206, 57, 0.2)"},
     "neutral":  {"hex": "#5B86E5", "rgba": "rgba(91, 134, 229, 0.2)"},
-    "warning":  {"hex": "#FF9F43", "rgba": "rgba(255, 159, 67, 0.2)"},
+    "warning":  {"hex": "#F59E0B", "rgba": "rgba(245, 158, 11, 0.2)"},
     "critical": {"hex": "#FF5B5C", "rgba": "rgba(255, 91, 92, 0.2)"},
     "info":     {"hex": "#9C27B0", "rgba": "rgba(156, 39, 176, 0.2)"}
 }

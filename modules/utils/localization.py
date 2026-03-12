@@ -1,5 +1,3 @@
-from typing import Dict, Any
-
 STRINGS = {
     "en": {
         # ==========================================================================
@@ -24,7 +22,7 @@ STRINGS = {
         # ==========================================================================
         "home_title": "System Overview & Data Catalog",
         "home_subtitle": "Decoding Social Dynamics and Economic Outcomes through Labor Data",
-        "home_box1": "Unlock deep insights into the socioeconomic factors driving individual income levels and labor market demographics.",
+        "home_box1": "Identify key socio-economic factors that influence income level and understand how demographic, educational, and occupational attributes shape earning potential.",
         "home_box2": "Empower policy makers and researchers with evidence-based insights into income inequality, educational returns, and workforce structures.",
         "data_audit_title": "Data Integrity Audit",
         "preprocessing_title": "Preprocessing",
@@ -81,7 +79,6 @@ STRINGS = {
         "access_denied": "Access denied. Admin privileges required.",
         "select_role": "Select Role",
         "ai_assistant": "AI Assistant",
-
 
         # ==========================================================================
         # LANGUAGE
@@ -144,11 +141,11 @@ STRINGS = {
         "overview_journey_eda_desc": 'Discovering socio-economic trends and income distributions through interactive exploratory data analysis.',
         "overview_journey_feat_title": "Feature Preparation",
         "overview_journey_feat_desc": "Constructing a model-ready feature space through categorical encoding and numerical standardization.",
-        "overview_col_anatomy": "Scope and Nature of the Dataset",
+        "overview_col_anatomy": "Key Attributes of Dataset",
         "overview_col_objectives": "Analysis Objectives",
         "overview_records_suffix": "RECORDS",
         "overview_anatomy_quant_title": "Quantitative Variables",
-        "overview_anatomy_quant_tags": "Age,Education_Num,Hours_per_Week",
+        "overview_anatomy_quant_tags": "Age,Education_Num,Hours_per_Week,Fnlwgt",
         "overview_anatomy_quant_note": "Measures of experience and labor intensity.",
         "overview_anatomy_cat_title": "Categorical Variables",
         "overview_anatomy_cat_prof_label": "Professional Context",
@@ -163,25 +160,17 @@ STRINGS = {
         "overview_anatomy_target_title": "Target Variable",
         "overview_anatomy_target_label": "Income Class:",
         "overview_anatomy_target_value": ">50K,≤50K",
-        "overview_obj_grp1_title": "Business-Standard Refinement",
-        "overview_obj_grp1_1_title": "Income Profiling",
-        "overview_obj_grp1_1_desc": "What are the defining demographic and professional characteristics that distinguish High Earners (>$50K) from Standard Earners (≤50K)?",
-        "overview_obj_grp1_2_title": "Labor Productivity",
-        "overview_obj_grp1_2_desc": "To what extent does labor intensity (measured by Hours-per-week) correlate with the probability of crossing the high-income threshold?",
-        "overview_obj_grp1_3_title": "Human Capital Synergy",
-        "overview_obj_grp1_3_desc": "How does the intersection of \"Professional Maturity\" (Prime Age) and \"Educational Attainment\" influence an individual’s financial success?",
-        "overview_obj_grp1_4_title": "Socio-Economic Stability",
-        "overview_obj_grp1_4_desc": "What is the statistical correlation between domestic stability (Marital Status/Relationship) and an individual's earning outcomes?",
-        "overview_obj_grp1_5_title": "Occupational Wealth Probability",
-        "overview_obj_grp1_5_desc": "Which professional sectors and occupations demonstrate the highest density of high-income individuals?",
-        
-        "overview_obj_grp2_title": "Gender & Marital Insights",
-        "overview_obj_grp2_1_title": "Gender Pay Gap & Equity",
-        "overview_obj_grp2_1_desc": "Is there a significant income disparity between genders when controlling for education levels and occupation types?",
-        "overview_obj_grp2_2_title": "The \"Marriage Premium\" Analysis",
-        "overview_obj_grp2_2_desc": "How does marital status (Married vs. Single/Divorced) impact the likelihood of reaching high-income status across different age groups?",
-        "overview_obj_grp2_3_title": "Household Role Dynamics",
-        "overview_obj_grp2_3_desc": "How do different household roles (e.g., Husband/Wife vs. Unmarried/Own-child) influence the distribution of income and working hours?",
+        "overview_obj_grp1_title": "Analytical Objectives",
+        "overview_obj_grp1_1_title": "Income Drivers",
+        "overview_obj_grp1_1_desc": "What factors influence income (<b>&gt;50K</b> vs <b>≤50K</b>)?",
+        "overview_obj_grp1_2_title": "Demographic Income Profile",
+        "overview_obj_grp1_2_desc": "Which <b>demographic groups</b> have the highest probability of high income?",
+        "overview_obj_grp1_3_title": "Education vs Earnings",
+        "overview_obj_grp1_3_desc": "Does <b>education</b> significantly increase earning potential?",
+        "overview_obj_grp1_4_title": "Work Intensity & Income",
+        "overview_obj_grp1_4_desc": "How does <b>working-hour intensity</b> relate to income levels?",
+        "overview_obj_grp1_5_title": "Occupation & Income",
+        "overview_obj_grp1_5_desc": "Which <b>occupations</b> lead to higher income opportunities?",
 
         # ==========================================================================
         # FEATURE CARDS
@@ -217,7 +206,6 @@ STRINGS = {
         "fill_rate": "Fill Rate",
         "null_values": "Null Values",
         "redundant_rows": "Redundant Rows",
-
         # Audit section captions & labels
         "issue_composition_caption": "Breakdown of all detected data quality issues across the dataset.",
         "field_integrity_caption": "Column-level health assessment and numeric distribution analysis.",
@@ -227,7 +215,7 @@ STRINGS = {
         "no_numeric_correlation": "Not enough numeric columns for correlation analysis.",
         "select_numeric_column": "Select a numeric column above to begin inspection.",
         "skewness_report": "Skewness Report",
-        "risk_records_inspector": "Risk Records Inspector",
+        "risk_records_inspector": "Outliers Inspector",
         "select_column": "Select Column",
         "detection_method": "Detection Method",
         "categorical_consistency": "Categorical Consistency Check",
@@ -257,9 +245,6 @@ STRINGS = {
         "rec_iqr": "Data is moderately skewed. IQR is recommended.",
         "rec_mod_z": "Data is highly skewed (|skew| > 1.0). Modified Z-Score is recommended.",
         "safe_zone_outlier_note": "Values within safe zones are trusted and ignored.",
-
-
-
         # Output text values for Audit Engine (Suggestions & Matrix)
         "sug_drop_impute": "Drop column or impute",
         "sug_fill_missing": "Fill missing (mean/median/mode)",
@@ -272,18 +257,16 @@ STRINGS = {
         "sug_log_transform": "Log-transform",
         "sug_safe_zone": "Values outside safe zone — clamp or investigate",
         "sug_ok": "✓ OK",
-
         "issue_mixed_casing": "Mixed Casing",
         "issue_whitespace": "Leading/Trailing Whitespace",
         "issue_noise_mixed": "Noise Mixed With Data",
         "issue_rare_singletons": "Rare Singletons",
         "issue_mixed_units": "Mixed Measurement Units",
         "issue_date_formats": "Inconsistent Date Formats",
-
         "dim_completeness": "Completeness",
         "dim_validity": "Validity",
         "dim_consistency": "Consistency",
-        
+
         "compose_missing": "Missing Values",
         "compose_duplicates": "Duplicate Rows",
         "compose_outliers_iqr": "Outlier Flags (IQR)",
@@ -380,38 +363,31 @@ STRINGS = {
         "eda_kpi_avg_hours_sub": "Work Hours",
         "eda_kpi_countries": "Countries",
         "eda_kpi_countries_sub": "Represented",
-
         "eda_section_demographics": "Demographic Panorama",
         "eda_section_demographics_caption": "Explore the age, gender, race, and relationship composition of the workforce.",
         "eda_tab_age": "Age Distribution",
         "eda_tab_gender_race": "Gender & Race",
         "eda_tab_marital": "Marital & Relationship",
-
         "eda_section_workforce": "Workforce & Education Intelligence",
         "eda_section_workforce_caption": "Understand the education, occupation, and employment landscape.",
         "eda_tab_education": "Education Ladder",
         "eda_tab_occupation": "Occupation Map",
         "eda_tab_workclass": "Workclass Breakdown",
-
         "eda_section_income": "Income Deep Dive",
         "eda_section_income_caption": "Analyze income distribution and its relationship with other features.",
         "eda_tab_income_overview": "Income Split",
         "eda_tab_income_cross": "Cross Analysis",
         "eda_select_feature": "Select Feature",
-
         "eda_section_financial": "Financial Indicators",
         "eda_section_financial_caption": "Capital gain and loss patterns across the workforce.",
         "eda_tab_capital_gain": "Capital Gain",
         "eda_tab_capital_loss": "Capital Loss",
         "eda_nonzero_only": "Non-zero values only",
-
         "eda_section_worklife": "Work-Life Balance",
         "eda_section_worklife_caption": "Working hours distribution and its impact on income.",
-
         "eda_section_geo": "Geographic Intelligence",
         "eda_section_geo_caption": "Country-level employee distribution and income patterns.",
         "eda_top_n_countries": "Top N Countries",
-
         "eda_section_multivariate": "Multivariate Explorer",
         "eda_section_multivariate_caption": "Discover hidden relationships through correlation and multi-dimensional views.",
         "eda_tab_correlation": "Correlation Heatmap",
@@ -500,6 +476,14 @@ STRINGS = {
         "corr_weak": "Weak |r|<0.4 — {n} pairs",
         "audit_download_pdf": ":material/picture_as_pdf: Download PDF Report",
 
+        # --- Data Summary Table ---
+        "audit_data_summary_title": "Statistical Overview",
+        "audit_data_summary_caption": "Per-column descriptive statistics — <b style='color:rgba(255,255,255,0.65)'>numeric columns</b> show central tendency and dispersion; <b style='color:rgba(255,255,255,0.65)'>categorical columns</b> show the dominant value.",
+        "audit_n_numeric": "{n} numeric columns",
+        "audit_n_categorical": "{n} categorical columns",
+        "audit_total_cols": "{n} total columns",
+        "audit_risk_inspector_caption": "Drill into individual columns to inspect flagged <b style='color:rgba(255,255,255,0.65)'>outlier rows</b> — choose a <b style='color:rgba(255,255,255,0.65)'>numeric column</b> and a <b style='color:rgba(255,255,255,0.65)'>detection method</b> (IQR, Z-Score, or Modified Z-Score) to view at-risk records.",
+
         # ==========================================================================
         # EDA — insight card stat labels
         # ==========================================================================
@@ -534,24 +518,22 @@ STRINGS = {
 def get_text(key: str, lang: str = 'en', **kwargs) -> str:
     """
     Retrieves a localized string for the given key.
-
     Args:
         key (str): The key for the text string.
         lang (str): The language code ('en' or 'vi'). Defaults to 'en'.
         **kwargs: Optional variables to format the string.
-
     Returns:
         str: The localized and formatted string.
     """
     lang_dict = STRINGS.get(lang, STRINGS['en'])
     text = lang_dict.get(key, f"[{key}]")
-    
+
     if kwargs and "{" in text and "}" in text:
         try:
             return text.format(**kwargs)
         except KeyError:
             return text
-            
+
     return text
 
 

@@ -125,165 +125,6 @@ def apply_global_theme(fig: go.Figure) -> go.Figure:
                 fig.add_trace(shadow_trace2)
     return fig
 
-# =============================================================================
-# FIELD INTEGRITY — Vertical Bar Chart (sorted by missing count)
-# =============================================================================
-
-def plot_field_integrity(integrity_df: pd.DataFrame) -> go.Figure:
-    """
-    Vertical bar chart sorted by missing count descending.
-    Color gradient: Light Green (low % null) → Teal → Deep Blue (high % null).
-    """
-    # Sort by missing descending
-    df_sorted = integrity_df.sort_values("Missing", ascending=False).reset_index(drop=True)
-
-    # Compute relative % for color (0 = no missing, 100 = max missing)
-    max_missing = df_sorted["Missing"].max()
-    pct_null = (df_sorted["Missing"] / max_missing * 100) if max_missing > 0 else df_sorted["Missing"] * 0
-
-    # Customdata for hover tooltip
-    hover_cols = ["Missing", "Noise", "Safe Zone Violations", "Real Fill Rate (%)"] if "Noise" in df_sorted.columns else ["Missing", "Safe Zone Violations", "Real Fill Rate (%)"]
-    customdata = df_sorted[hover_cols].values
-
-    if "Noise" in df_sorted.columns:
-        hover_tpl = (
-            "<b>%{x}</b><br>"
-            "Missing: <b>%{y:,}</b><br>"
-            "Noise: %{customdata[1]}<br>"
-            "Safe Zone Violations: %{customdata[2]}<br>"
-            "Real Fill Rate: %{customdata[3]}%"
-            "<extra></extra>"
-        )
-    else:
-        hover_tpl = (
-            "<b>%{x}</b><br>"
-            "Missing: <b>%{y:,}</b><br>"
-            "Safe Zone Violations: %{customdata[1]}<br>"
-            "Real Fill Rate: %{customdata[2]}%"
-            "<extra></extra>"
-        )
-
-    fig = go.Figure()
-
-    fig.add_trace(go.Bar(
-        x=df_sorted["Column"],
-        y=df_sorted["Missing"],
-        marker=dict(
-            color=pct_null,
-            colorscale=[
-                [0.0, "rgba(0,0,0,0)"],     # 0% Missing (Perfect) is transparent
-                [0.001, "rgba(255,255,255,0.05)"], # Just above 0%
-                [0.1, CHART_COLORWAY[1]],   # Sky Blue
-                [0.6, CHART_COLORWAY[2]],   # Amber
-                [1.0, CHART_COLORWAY[3]],   # Coral Red (High Missing)
-            ],
-            colorbar=dict(
-                title=dict(text="% Missing", font=dict(color=MUTED_COLOR, size=11)),
-                tickfont=dict(color=MUTED_COLOR, size=10),
-                thickness=12,
-                len=0.6,
-                outlinewidth=0,
-                x=1.02,
-            ),
-            line=dict(width=0),
-        ),
-        customdata=customdata,
-        hovertemplate=hover_tpl,
-        showlegend=False,
-    ))
-
-    fig.update_layout(
-        **CHART_LAYOUT,
-        height=440,
-        bargap=0.15,
-        xaxis=dict(
-            gridcolor="rgba(0,0,0,0)",
-            tickfont=dict(size=11, color=MUTED_COLOR),
-            tickangle=-45,
-        ),
-        yaxis=dict(
-            gridcolor=GRID_COLOR,
-            zerolinecolor=ZERO_LINE_COLOR,
-            zeroline=False,
-            title=dict(text="Missing Values", font=dict(color=MUTED_COLOR, size=12)),
-            tickfont=dict(size=11, color=MUTED_COLOR),
-        ),
-    )
-    return apply_global_theme(fig)
-
-
-# =============================================================================
-# DATA QUALITY MATRIX — Heatmap
-# =============================================================================
-
-def plot_quality_matrix(quality_df: pd.DataFrame) -> go.Figure:
-    """
-    Heatmap chất lượng dữ liệu: Completeness / Accuracy / Consistency per column.
-    Dark Slate → Teal → Emerald Green gradient (matching Fill Rate palette).
-    """
-    z = quality_df.values
-    col_names = quality_df.index.tolist()
-    dim_names = quality_df.columns.tolist()
-
-    text_matrix = quality_df.round(1).astype(str).values
-
-    # Sequential colorscale: Red (0) -> Amber (30) -> Sky Blue (70) -> Transparent (100)
-    quality_colorscale = [
-        [0.0, CHART_COLORWAY[3]],     # Error state (Coral Red)
-        [0.3, CHART_COLORWAY[2]],     # Warning state (Amber)
-        [0.7, CHART_COLORWAY[1]],     # Good state (Sky Blue)
-        [0.999, "rgba(255, 255, 255, 0.05)"], # Just below 100%
-        [1.0, "rgba(0, 0, 0, 0)"],    # 100% Perfect state is completely transparent
-    ]
-
-    fig = go.Figure(data=go.Heatmap(
-        z=z,
-        x=dim_names,
-        y=col_names,
-        colorscale=quality_colorscale,
-        zmin=0, zmax=100,
-        text=text_matrix,
-        texttemplate="%{text}%",
-        textfont=dict(size=13, color=BRIGHT_TEXT, family='"Inter", sans-serif'),
-        xgap=3,
-        ygap=3,
-        hovertemplate=(
-            "<b>%{y}</b><br>"
-            "%{x}: <b>%{z:.1f}%</b>"
-            "<extra></extra>"
-        ),
-        colorbar=dict(
-            tickfont=dict(color=MUTED_COLOR, family='"Inter", sans-serif', size=10),
-            title=dict(text="Score %", font=dict(color=MUTED_COLOR, size=11)),
-            thickness=12,
-            len=0.6,
-            ticksuffix="%",
-            outlinewidth=0,
-        ),
-    ))
-
-    height = max(400, len(col_names) * 40)
-
-    fig.update_layout(
-        **CHART_LAYOUT,
-        height=height,
-        xaxis=dict(
-            gridcolor="rgba(0,0,0,0)",
-            side="top",
-            tickfont=dict(size=13, color=BRIGHT_TEXT, family='"Inter", sans-serif'),
-            tickangle=0,
-        ),
-        yaxis=dict(
-            gridcolor="rgba(0,0,0,0)",
-            autorange="reversed",
-            tickfont=dict(size=12, color=MUTED_COLOR),
-        ),
-    )
-    fig.layout.plot_bgcolor = "rgba(0,0,0,0)"
-    fig.layout.paper_bgcolor = "rgba(0,0,0,0)"
-    fig.layout.margin.update(l=20, r=20, t=50, b=20)
-    return apply_global_theme(fig)
-
 
 # =============================================================================
 # CORRELATION — Heatmap
@@ -408,7 +249,7 @@ def plot_outlier_distribution(
         nbinsx=50,
         name="Data Range",
         marker_color=BLUE,
-        opacity=0.7,
+        opacity=1.0,
         histnorm='probability density'
     ))
 
@@ -838,7 +679,24 @@ def plot_issue_composition(
 
     bar_colors = [_color(p) for p in pcts]
 
-    # 3. Subplots: bar (left) + donut (right)
+    # 3. Section anchor mapping: label keyword → section anchor id
+    ANCHOR_MAP = {
+        "missing":         "section-field-integrity",
+        "duplicate":       "section-field-integrity",
+        "noise":           "section-data-quality",
+        "inconsisten":     "section-data-quality",
+    }
+
+    def _anchor(label: str) -> str:
+        lbl_lower = label.lower()
+        for keyword, anchor in ANCHOR_MAP.items():
+            if keyword in lbl_lower:
+                return anchor
+        return ""
+
+    anchors = [_anchor(lbl) for lbl in labels]
+
+    # 4. Subplots: bar (left) + donut (right)
     fig = make_subplots(
         rows=1, cols=2,
         column_widths=[0.68, 0.32],
@@ -846,9 +704,13 @@ def plot_issue_composition(
         horizontal_spacing=0.04,
     )
 
-    # 4a. Horizontal bars
+    # 4a. Horizontal bars — no inline text (we use annotations for always-visible labels)
     hover_tpls = [
-        f"<b>{lbl}</b><br>Count: <b>{dc:,}</b><br>Share: <b>{p:.3f}%</b><extra></extra>"
+        (
+            f"<b>{lbl}</b><br>Count: <b>{dc:,}</b><br>Share: <b>{p:.3f}%</b>"
+            + (f"<br><i style='color:#888;font-size:10px'>Click to jump to details ↓</i>" if _anchor(lbl) else "")
+            + "<extra></extra>"
+        )
         for lbl, dc, p in zip(labels, display_counts, pcts)
     ]
     fig.add_trace(
@@ -857,15 +719,30 @@ def plot_issue_composition(
             y=labels,
             orientation="h",
             marker=dict(color=bar_colors, opacity=0.88, line=dict(width=0)),
-            text=[f"{p:.2f}%  ({dc:,})" for p, dc in zip(pcts, display_counts)],
-            textposition="outside",
-            textfont=dict(size=11, color=bar_colors, family='"Inter", sans-serif'),
+            text=None,                  # text removed — using annotations instead
             cliponaxis=False,
             hovertemplate=hover_tpls,
+            customdata=anchors,
             showlegend=False,
         ),
         row=1, col=1,
     )
+
+    # Always-visible value annotations at end of each bar
+    max_pct_val = max(pcts) if any(p > 0 for p in pcts) else 1.0
+    x_end_approx = max_pct_val * 1.55
+    for lbl, p, dc, clr in zip(labels, pcts, display_counts, bar_colors):
+        fig.add_annotation(
+            x=p, y=lbl,
+            text=f"  {p:.2f}%  ({dc:,})",
+            xref="x", yref="y",
+            showarrow=False,
+            xanchor="left",
+            yanchor="middle",
+            font=dict(size=11, color=clr, family='"Inter", sans-serif'),
+            bgcolor="rgba(0,0,0,0)",
+            row=1, col=1,
+        )
 
     # 4b. Donut — Clean vs Affected
     total_issues = sum(counts)
@@ -903,8 +780,6 @@ def plot_issue_composition(
     )
 
     # 6. Layout & axes
-    # Apply base theme first, then override margin/legend separately
-    # (CHART_LAYOUT already contains margin & legend — cannot pass them twice)
     max_pct = max(pcts) if any(p > 0 for p in pcts) else 1.0
     x_end = max_pct * 1.55
 
@@ -912,7 +787,7 @@ def plot_issue_composition(
     fig.update_layout(
         height=max(260, len(items) * 52 + 60),
         bargap=0.28,
-        margin=dict(l=10, r=40, t=10, b=40),
+        margin=dict(l=140, r=40, t=10, b=40),
     )
     fig.update_xaxes(
         range=[0, x_end], gridcolor=GRID_COLOR, zerolinecolor=ZERO_LINE_COLOR,
@@ -925,5 +800,160 @@ def plot_issue_composition(
         tickfont=dict(size=12, color=BRIGHT_TEXT, family='"Inter", sans-serif'),
         autorange="reversed",
         row=1, col=1,
+    )
+    return fig
+
+
+# =============================================================================
+# CATEGORY FREQUENCY BAR CHART
+# =============================================================================
+
+def plot_category_frequency(
+    series: pd.Series,
+    col_name: str,
+    rare_threshold_pct: float = 1.0,
+) -> go.Figure:
+    """
+    Horizontal bar chart of value counts for a categorical column.
+
+    Bars whose relative frequency is ≤ *rare_threshold_pct* % are highlighted
+    in amber to flag rare / potentially noisy categories.
+
+    Args:
+        series:              Categorical Series (NaN-dropped).
+        col_name:            Column name (used in title / hover).
+        rare_threshold_pct:  Percentage threshold to flag rare categories.
+
+    Returns:
+        Plotly Figure ready for ``st.plotly_chart``.
+    """
+    value_counts = series.value_counts()
+    total = len(series)
+    pct = (value_counts / total * 100).round(2)
+
+    # Colour: rare → amber, normal → blue
+    colors = [ORANGE if p <= rare_threshold_pct else BLUE for p in pct]
+
+    fig = go.Figure(go.Bar(
+        x=value_counts.values,
+        y=value_counts.index.astype(str),
+        orientation="h",
+        marker=dict(color=colors, line=dict(width=0)),
+        text=[f"{v:,}  ({p}%)" for v, p in zip(value_counts.values, pct)],
+        textposition="auto",
+        textfont=dict(size=11, color=BRIGHT_TEXT, family='"Inter", sans-serif'),
+        hovertemplate=(
+            "<b>%{y}</b><br>"
+            "Count: <b>%{x:,}</b><br>"
+            "<extra></extra>"
+        ),
+    ))
+
+    fig.update_layout(
+        **CHART_LAYOUT,
+        height=max(320, len(value_counts) * 28 + 60),
+        xaxis=dict(
+            gridcolor=GRID_COLOR,
+            zerolinecolor=ZERO_LINE_COLOR,
+            tickfont=dict(size=11, color=MUTED_COLOR),
+            title=None,
+        ),
+        yaxis=dict(
+            autorange="reversed",
+            tickfont=dict(size=11, color=BRIGHT_TEXT, family='"Inter", sans-serif'),
+            title=None,
+        ),
+        bargap=0.15,
+    )
+    return fig
+
+
+# =============================================================================
+# BOXPLOT — Outlier Inspector
+# =============================================================================
+
+def plot_boxplot(
+    series: pd.Series,
+    col_name: str,
+    method: str = "iqr",
+    threshold: float = None,
+) -> go.Figure:
+    """
+    Horizontal boxplot with method-synced boundary lines.
+
+    Whisker dots are hidden; instead, vertical lines mark the detection
+    boundaries matching the Inspector's active method.
+
+    Args:
+        series:    Numeric Series (NaN-dropped).
+        col_name:  Column name for labelling.
+        method:    ``'iqr'``, ``'zscore'``, or ``'modified_zscore'``.
+        threshold: Detection threshold (defaults: IQR=1.5, Z-Score/Mod-Z=3.0).
+
+    Returns:
+        Plotly Figure ready for ``st.plotly_chart``.
+    """
+    import numpy as np
+
+    if threshold is None:
+        threshold = 1.5 if method == "iqr" else 3.0
+
+    fig = go.Figure(go.Box(
+        x=series,
+        name=col_name,
+        marker_color=BLUE,
+        line_color=BLUE,
+        fillcolor="rgba(91,134,229,0.25)",
+        boxmean="sd",
+        boxpoints=False,
+        hoverinfo="x",
+    ))
+
+    # --- Method-synced boundary lines ---
+    vals = series.values
+    fence_lo, fence_hi = None, None
+
+    if method == "iqr":
+        q1, q3 = np.percentile(vals, [25, 75])
+        iqr = q3 - q1
+        fence_lo = q1 - threshold * iqr
+        fence_hi = q3 + threshold * iqr
+    elif method == "zscore":
+        mean_val, std_val = np.mean(vals), np.std(vals, ddof=1)
+        if std_val > 0:
+            fence_lo = mean_val - threshold * std_val
+            fence_hi = mean_val + threshold * std_val
+    elif method == "modified_zscore":
+        median = np.median(vals)
+        mad = np.median(np.abs(vals - median))
+        if mad > 0:
+            fence_lo = median - threshold * mad / 0.6745
+            fence_hi = median + threshold * mad / 0.6745
+
+    if fence_lo is not None:
+        fig.add_vline(
+            x=fence_lo, line_width=2, line_dash="solid", line_color=RED,
+            annotation_text="Lower", annotation_position="bottom left",
+            annotation_font=dict(color=RED, size=10),
+        )
+    if fence_hi is not None:
+        fig.add_vline(
+            x=fence_hi, line_width=2, line_dash="solid", line_color=RED,
+            annotation_text="Upper", annotation_position="bottom right",
+            annotation_font=dict(color=RED, size=10),
+        )
+
+    layout = {k: v for k, v in CHART_LAYOUT.items() if k != "margin"}
+    fig.update_layout(
+        **layout,
+        height=180,
+        margin=dict(l=10, r=10, t=10, b=10),
+        xaxis=dict(
+            gridcolor=GRID_COLOR,
+            zerolinecolor=ZERO_LINE_COLOR,
+            tickfont=dict(size=11, color=MUTED_COLOR),
+        ),
+        yaxis=dict(showticklabels=False),
+        showlegend=False,
     )
     return fig

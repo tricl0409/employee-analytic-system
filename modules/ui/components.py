@@ -1,7 +1,6 @@
 import time
 import pandas as pd
 import streamlit as st
-
 from modules.ui.icons import ICONS, get_icon
 from modules.core.file_manager import get_data_library, delete_data
 from modules.core.data_engine import load_and_standardize, _get_file_mtime, process_inventory, compute_dataset_metrics
@@ -13,10 +12,12 @@ from modules.utils.localization import get_text
 from modules.utils.helpers import _get_current_lang
 from modules.utils.theme_manager import STATUS_COLORS
 
+
 # ─────────────────────────────────────────────────────────────────────────────
 # MODULE-LEVEL PRIVATE HELPERS (shared by the 3 preprocessing tab renderers)
 # Defined once here instead of being re-declared inside each @staticmethod.
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def _pp_hex(h: str) -> str:
     """Convert `#RRGGBB` to `'R,G,B'` string for CSS rgba()."""
@@ -77,7 +78,7 @@ class UiComponents:
         st.markdown("""
             <div style="height:1px; background:linear-gradient(90deg,
                 transparent 0%, rgba(255,255,255,0.06) 20%, rgba(255,255,255,0.06) 80%, transparent 100%);
-                margin:28px 0 24px 0;"></div>
+                margin:16px 0 14px 0;"></div>
         """, unsafe_allow_html=True)    
 
     @staticmethod
@@ -94,7 +95,6 @@ class UiComponents:
             time.sleep(1.2)
             scan_placeholder.empty()
             st.session_state[audit_key] = True
-
     @staticmethod
     def page_header(title, subtitle):
         """
@@ -126,7 +126,6 @@ class UiComponents:
                 {get_text('home_subtitle', lang)}
             </p>
         </div>
-        
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 50px; max-width: 1100px; margin-left: auto; margin-right: auto; align-items: stretch;">
             <div class="overview-box" style="height: 100%;">
                 <div class="overview-box-icon">✦</div>
@@ -158,7 +157,6 @@ class UiComponents:
         </div>
         """
         st.sidebar.markdown(brand_html, unsafe_allow_html=True)
-
     @staticmethod
     def footer():
         lang = _get_current_lang()
@@ -189,7 +187,6 @@ class UiComponents:
         # === CONTROL BAR ===
         total_assets = len(library)
         st.markdown("<div style='margin-top: 12px;'></div>", unsafe_allow_html=True)
-        
         # 1. Inventory Status (Header)
         st.markdown(f"""
             <div class="status-bar" style="background: linear-gradient(90deg, rgba(59, 130, 246, 0.15) 0%, rgba(59, 130, 246, 0.05) 100%); justify-content: space-between; border: 1px solid rgba(59, 130, 246, 0.2); margin-bottom: 20px;">
@@ -201,7 +198,6 @@ class UiComponents:
         """, unsafe_allow_html=True)
 
         col_search, col_upload = st.columns([3, 1], gap="small")
-        
         with col_search:
             search_query = st.text_input(
                 "Search", 
@@ -229,43 +225,33 @@ class UiComponents:
         if lib_df.empty:
             st.info(get_text('no_files_match', lang))
             return
-
         # Pagination Logic
         ITEMS_PER_PAGE = 5
         if "inventory_page" not in st.session_state:
             st.session_state.inventory_page = 1
-            
         total_files = len(lib_df)
         total_pages = max(1, (total_files - 1) // ITEMS_PER_PAGE + 1)
-        
         # Ensure active page is valid
         if st.session_state.inventory_page > total_pages:
             st.session_state.inventory_page = total_pages
-        
         current_page = st.session_state.inventory_page
         start_idx = (current_page - 1) * ITEMS_PER_PAGE
         end_idx = start_idx + ITEMS_PER_PAGE
-        
         # Slice Data
         paginated_df = lib_df.iloc[start_idx:end_idx]
-
         for _, row in paginated_df.iterrows():
             is_active = (row['name'] == active_file)
-            
             # Active State Styling
             if is_active:
                 name_display = f"<span style='color:var(--accent-blue); font-weight:700'>● &nbsp;{row['name']}</span>"
             else:
                 name_display = row['name']
-            
             # Column Layout (4 action buttons: Preview, Activate, Download, Delete)
             c1, c2, c3, c4, c5, c6, c7 = st.columns([3.0, 0.9, 1.2, 0.5, 0.5, 0.5, 0.5], gap="small")
-            
             # Data Columns
             c1.markdown(f"<div class='inventory-cell'>{name_display}</div>", unsafe_allow_html=True)
             c2.markdown(f"<div class='inventory-cell'>{row['size']}</div>", unsafe_allow_html=True)
             c3.markdown(f"<div class='inventory-cell inventory-cell-muted'>{row['date']}</div>", unsafe_allow_html=True)
-            
             # Action Buttons
             if c4.button(":material/visibility:", key=f"btn_prev_{row['name']}", use_container_width=True, help=get_text('preview', lang)):
                 try:
@@ -275,12 +261,10 @@ class UiComponents:
                         st.rerun()
                 except Exception as e:
                     st.error(f"Error: {e}")
-            
             if c5.button(":material/check_circle:", key=f"btn_act_{row['name']}", use_container_width=True, help=get_text('active', lang)):
                 st.session_state.active_file = row['name']
                 st.session_state.scroll_to_modules = True
                 st.rerun()
-
             # Download button — reads the file bytes on-demand
             try:
                 from modules.core.file_manager import UPLOADS_DIR
@@ -299,7 +283,6 @@ class UiComponents:
                 )
             except Exception:
                 c6.markdown("<div style='height:40px;'></div>", unsafe_allow_html=True)
-
             # Prevent deleting the currently active file
             if is_active:
                 c7.markdown("<div style='height:40px;'></div>", unsafe_allow_html=True)
@@ -309,27 +292,22 @@ class UiComponents:
                     if st.session_state.get('active_file') == row['name']:
                         st.session_state.active_file = get_text('no_data_loaded', lang)
                     st.rerun()
-
         # Pagination Controls
         if total_pages > 1:
             st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
             p1, p2, p3 = st.columns([1, 2, 1])
-            
             with p1:
                 if current_page > 1:
                     if st.button(f":material/chevron_left: {get_text('previous', lang)}", key="nav_prev", use_container_width=True):
                         st.session_state.inventory_page -= 1
                         st.rerun()
-                        
             with p2:
                 st.markdown(f"<div style='text-align:center; padding-top:8px;' class='pagination-info'>{get_text('page_info', lang, current=current_page, total=total_pages)}</div>", unsafe_allow_html=True)
-                
             with p3:
                 if current_page < total_pages:
                     if st.button(f":material/chevron_right: {get_text('next', lang)}", key="nav_next", use_container_width=True):
                         st.session_state.inventory_page += 1
                         st.rerun()
-
     @staticmethod
     def metric_card(label, value, delta="", glow="blue"):
         """
@@ -359,10 +337,8 @@ class UiComponents:
         if "preview_df" in st.session_state and "preview_name" in st.session_state:
             df = st.session_state.preview_df
             st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
-            
             # Calculate Metrics (DELEGATED TO DATA ENGINE)
             metrics = compute_dataset_metrics(df)
-            
             # Container with Glassmorphism
             with st.container():
                 # Header
@@ -382,27 +358,20 @@ class UiComponents:
 
                 # Metrics Grid (Styled)
                 m1, m2, m3, m4, m5 = st.columns(5, gap="small")
-
                 with m1: UiComponents.metric_card(get_text('rows', lang),         f"{metrics['rows']:,}",          glow="blue")
                 with m2: UiComponents.metric_card(get_text('columns', lang),      f"{metrics['cols']}",            glow="blue")
                 with m3: UiComponents.metric_card(get_text('memory', lang),       f"{metrics['memory_mb']:.1f} MB", glow="blue")
                 with m4: UiComponents.metric_card(get_text('duplicates', lang),   f"{metrics['duplicates']}",      glow="red"   if metrics['duplicates'] > 0  else "green")
                 with m5: UiComponents.metric_card(get_text('missing_data', lang), f"{metrics['missing_pct']:.1f}%", glow="red"  if metrics['missing_pct'] > 0 else "green")
-                
                 st.markdown("<div style='margin-bottom: 24px;'></div>", unsafe_allow_html=True)
-
                 # Tabs
                 tab1, tab2 = st.tabs(["Data Preview", "Column Analysis"])
-                
                 with tab1:
                     st.dataframe(df.head(10), use_container_width=True, height=350)
-                
                 with tab2:
                     report_df = generate_column_report(df)
                     st.dataframe(report_df, use_container_width=True, height=350)
-                
                 st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
-                
                 # Footer Action
                 _, c_close = st.columns([4, 1])
                 with c_close:
@@ -410,9 +379,7 @@ class UiComponents:
                         del st.session_state.preview_df
                         del st.session_state.preview_name
                         st.rerun()
-
                 st.markdown("</div>", unsafe_allow_html=True)
-
     @staticmethod
     def feature_navigation(num_records, lang):
         """
@@ -423,16 +390,20 @@ class UiComponents:
         All text sourced from localization, styles from styles.py.
         """
         t = lambda key: get_text(key, lang)
-
+        # -- Highlighted keyword sets (based on reference image) --
+        QUANT_HL  = {"Age", "Hours_per_Week"}
+        CAT_HL    = {"Occupation", "Education", "Marital_Status", "Sex"}
+        FIN_HL    = {"Capital Gain"}
+        def _tag(name, hl_set, hl_class):
+            cls = f"anatomy-tag {hl_class}" if name.strip() in hl_set else "anatomy-tag"
+            return f'<span class="{cls}">{name.strip()}</span>'
         # -- Tag helpers --
-        quant_tags = "".join(f'<span class="anatomy-tag">{tag.strip()}</span>' for tag in t('overview_anatomy_quant_tags').split(","))
-        cat_prof_tags = "".join(f'<span class="anatomy-tag">{tag.strip()}</span>' for tag in t('overview_anatomy_cat_prof_tags').split(","))
-        cat_demo_tags = "".join(f'<span class="anatomy-tag">{tag.strip()}</span>' for tag in t('overview_anatomy_cat_demo_tags').split(","))
-        cat_fam_tags = "".join(f'<span class="anatomy-tag">{tag.strip()}</span>' for tag in t('overview_anatomy_cat_fam_tags').split(","))
-        
-        fin_tags = "".join(f'<span class="anatomy-tag">{tag.strip()}</span>' for tag in t('overview_anatomy_fin_tags').split(","))
-        target_tags = "".join(f'<span class="anatomy-tag anatomy-tag-red">{val.strip()}</span>' for val in t('overview_anatomy_target_value').split(","))
-
+        quant_tags    = "".join(_tag(k, QUANT_HL, "anatomy-tag-orange") for k in t('overview_anatomy_quant_tags').split(","))
+        cat_prof_tags = "".join(_tag(k, CAT_HL,   "anatomy-tag-orange") for k in t('overview_anatomy_cat_prof_tags').split(","))
+        cat_demo_tags = "".join(_tag(k, CAT_HL,   "anatomy-tag-orange") for k in t('overview_anatomy_cat_demo_tags').split(","))
+        cat_fam_tags  = "".join(_tag(k, CAT_HL,   "anatomy-tag-orange") for k in t('overview_anatomy_cat_fam_tags').split(","))
+        fin_tags      = "".join(_tag(k, FIN_HL,   "anatomy-tag-orange") for k in t('overview_anatomy_fin_tags').split(","))
+        target_tags   = "".join(f'<span class="anatomy-tag anatomy-tag-red">{v.strip()}</span>' for v in t('overview_anatomy_target_value').split(","))
         # -- Objective icons from centralized registry --
         icon_bar_chart = get_icon("bar_chart", size=22)
         icon_clock = get_icon("clock", size=22)
@@ -442,12 +413,10 @@ class UiComponents:
         icon_users = get_icon("users", size=22)
         icon_heart = get_icon("heart", size=22)
         icon_home = get_icon("home", size=22)
-
         html = f"""
 <div id='module-selection-anchor'></div>
 <div class="section-title">{t('overview_section_journey')}</div>
 <div class="section-divider"></div>
-
 <div class="cards-grid">
     <a target="_self" class="journey-card journey-card-1">
         <div class="journey-step step-1">1</div>
@@ -470,137 +439,93 @@ class UiComponents:
         <div class="journey-desc">{t('overview_journey_feat_desc')}</div>
     </a>
 </div>
-
 <div class="two-columns">
-    <!-- Left Column: Data Anatomy -->
+    <!-- Left Column: Research Objectives -->
+    <div class="column-wrapper">
+        <div class="header-row">
+            <div class="col-title">{t('overview_col_objectives')}</div>
+        </div>
+        <div class="column-boxes">
+            <div class="obj-card-premium">
+                <div class="obj-icon-wrap">{icon_bar_chart}</div>
+                <div class="obj-content">
+                    <div class="obj-title">{t('overview_obj_grp1_1_title')}</div>
+                    <div class="obj-desc">{t('overview_obj_grp1_1_desc')}</div>
+                </div>
+            </div>
+            <div class="obj-card-premium">
+                <div class="obj-icon-wrap">{icon_zap}</div>
+                <div class="obj-content">
+                    <div class="obj-title">{t('overview_obj_grp1_2_title')}</div>
+                    <div class="obj-desc">{t('overview_obj_grp1_2_desc')}</div>
+                </div>
+            </div>
+            <div class="obj-card-premium">
+                <div class="obj-icon-wrap">{icon_clock}</div>
+                <div class="obj-content">
+                    <div class="obj-title">{t('overview_obj_grp1_3_title')}</div>
+                    <div class="obj-desc">{t('overview_obj_grp1_3_desc')}</div>
+                </div>
+            </div>
+            <div class="obj-card-premium">
+                <div class="obj-icon-wrap">{icon_heart_pulse}</div>
+                <div class="obj-content">
+                    <div class="obj-title">{t('overview_obj_grp1_4_title')}</div>
+                    <div class="obj-desc">{t('overview_obj_grp1_4_desc')}</div>
+                </div>
+            </div>
+            <div class="obj-card-premium">
+                <div class="obj-icon-wrap">{icon_briefcase}</div>
+                <div class="obj-content">
+                    <div class="obj-title">{t('overview_obj_grp1_5_title')}</div>
+                    <div class="obj-desc">{t('overview_obj_grp1_5_desc')}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Right Column: Data Anatomy -->
     <div class="column-wrapper">
         <div class="header-row">
             <div class="col-title">{t('overview_col_anatomy')}</div>
             <div class="records-badge">{num_records} {t('overview_records_suffix')}</div>
         </div>
-
         <div class="column-boxes">
             <div class="anatomy-box">
                 <div class="anatomy-title">{t('overview_anatomy_quant_title')}</div>
                 <div class="anatomy-tags">{quant_tags}</div>
                 <div class="anatomy-note">{t('overview_anatomy_quant_note')}</div>
             </div>
-
-            <div class="anatomy-box anatomy-box-green">
-                <div class="anatomy-title anatomy-title-green" style="margin-bottom: 12px;">{t('overview_anatomy_cat_title')}</div>
-                
+            <div class="anatomy-box anatomy-box-amber">
+                <div class="anatomy-title anatomy-title-amber" style="margin-bottom: 12px;">{t('overview_anatomy_cat_title')}</div>
                 <div style="margin-bottom: 12px;">
                     <div style="color: var(--text-secondary); font-size: 0.8rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
-                        <span style="color: var(--accent-green);">-</span> {t('overview_anatomy_cat_prof_label')}
+                        <span style="color: var(--accent-orange);">-</span> {t('overview_anatomy_cat_prof_label')}
                     </div>
                     <div class="anatomy-tags" style="padding-left: 14px;">{cat_prof_tags}</div>
                 </div>
-
                 <div style="margin-bottom: 12px;">
                     <div style="color: var(--text-secondary); font-size: 0.8rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
-                        <span style="color: var(--accent-green);">-</span> {t('overview_anatomy_cat_demo_label')}
+                        <span style="color: var(--accent-orange);">-</span> {t('overview_anatomy_cat_demo_label')}
                     </div>
                     <div class="anatomy-tags" style="padding-left: 14px;">{cat_demo_tags}</div>
                 </div>
-
                 <div>
                     <div style="color: var(--text-secondary); font-size: 0.8rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
-                        <span style="color: var(--accent-green);">-</span> {t('overview_anatomy_cat_fam_label')}
+                        <span style="color: var(--accent-orange);">-</span> {t('overview_anatomy_cat_fam_label')}
                     </div>
                     <div class="anatomy-tags" style="padding-left: 14px;">{cat_fam_tags}</div>
                 </div>
             </div>
-
-            <div class="anatomy-box anatomy-box-blue">
-                <div class="anatomy-title anatomy-title-blue">{t('overview_anatomy_fin_title')}</div>
+            <div class="anatomy-box anatomy-box-amber">
+                <div class="anatomy-title anatomy-title-amber">{t('overview_anatomy_fin_title')}</div>
                 <div class="anatomy-tags">{fin_tags}</div>
                 <div class="anatomy-note">{t('overview_anatomy_fin_note')}</div>
             </div>
-
             <div class="anatomy-box anatomy-box-red">
                 <div class="anatomy-title anatomy-title-red">{t('overview_anatomy_target_title')}</div>
                 <div style="display: flex; align-items: center; gap: 12px; margin-top: 8px;">
                     <span style="color: white; font-weight: bold; font-size: 0.95rem;">{t('overview_anatomy_target_label')}</span>
                     {target_tags}
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Right Column: Research Objectives -->
-    <div class="column-wrapper">
-        <div class="header-row">
-            <div class="col-title">{t('overview_col_objectives')}</div>
-        </div>
-
-        <div class="column-boxes">
-            <!-- GROUP 1 -->
-            <div class="anatomy-title anatomy-title-blue" style="margin-bottom: 4px; margin-top: 8px;">{t('overview_obj_grp1_title')}</div>
-            
-            <div class="objective-card objective-card-blue">
-                <div class="objective-icon icon-blue">{icon_bar_chart}</div>
-                <div>
-                    <div class="objective-title">{t('overview_obj_grp1_1_title')}</div>
-                    <div class="objective-desc">{t('overview_obj_grp1_1_desc')}</div>
-                </div>
-            </div>
-
-            <div class="objective-card objective-card-blue">
-                <div class="objective-icon icon-blue">{icon_clock}</div>
-                <div>
-                    <div class="objective-title">{t('overview_obj_grp1_2_title')}</div>
-                    <div class="objective-desc">{t('overview_obj_grp1_2_desc')}</div>
-                </div>
-            </div>
-
-            <div class="objective-card objective-card-blue">
-                <div class="objective-icon icon-blue">{icon_zap}</div>
-                <div>
-                    <div class="objective-title">{t('overview_obj_grp1_3_title')}</div>
-                    <div class="objective-desc">{t('overview_obj_grp1_3_desc')}</div>
-                </div>
-            </div>
-
-            <div class="objective-card objective-card-blue">
-                <div class="objective-icon icon-blue">{icon_heart_pulse}</div>
-                <div>
-                    <div class="objective-title">{t('overview_obj_grp1_4_title')}</div>
-                    <div class="objective-desc">{t('overview_obj_grp1_4_desc')}</div>
-                </div>
-            </div>
-
-            <div class="objective-card objective-card-blue">
-                <div class="objective-icon icon-blue">{icon_briefcase}</div>
-                <div>
-                    <div class="objective-title">{t('overview_obj_grp1_5_title')}</div>
-                    <div class="objective-desc">{t('overview_obj_grp1_5_desc')}</div>
-                </div>
-            </div>
-
-            <!-- GROUP 2 -->
-            <div class="anatomy-title anatomy-title-orange" style="margin-bottom: 4px; margin-top: 16px;">{t('overview_obj_grp2_title')}</div>
-
-            <div class="objective-card objective-card-orange">
-                <div class="objective-icon icon-orange">{icon_users}</div>
-                <div>
-                    <div class="objective-title">{t('overview_obj_grp2_1_title')}</div>
-                    <div class="objective-desc">{t('overview_obj_grp2_1_desc')}</div>
-                </div>
-            </div>
-
-            <div class="objective-card objective-card-orange">
-                <div class="objective-icon icon-orange">{icon_heart}</div>
-                <div>
-                    <div class="objective-title">{t('overview_obj_grp2_2_title')}</div>
-                    <div class="objective-desc">{t('overview_obj_grp2_2_desc')}</div>
-                </div>
-            </div>
-
-            <div class="objective-card objective-card-orange">
-                <div class="objective-icon icon-orange">{icon_home}</div>
-                <div>
-                    <div class="objective-title">{t('overview_obj_grp2_3_title')}</div>
-                    <div class="objective-desc">{t('overview_obj_grp2_3_desc')}</div>
                 </div>
             </div>
         </div>
@@ -617,14 +542,12 @@ class UiComponents:
 
     # Backward-compatible alias — kept so any lingering imports of audit_metric still work.
     audit_metric = metric_card
-
     @staticmethod
     def scan_animation(message=None):
         """Renders the scanning / pulse progress animation."""
         lang = _get_current_lang()
         if message is None:
             message = get_text('scanning', lang)
-            
         st.markdown(f"""
             <div style="padding: 24px 0;">
                 <div class="scan-label">{message}</div>
@@ -642,55 +565,39 @@ class UiComponents:
         if not numeric_cols:
             st.info(get_text('no_numeric_distribution', lang))
             return None
-
         # Calculate Smart Recommendation first
         selected_col = st.selectbox(
             get_text('select_column', lang), 
             numeric_cols,
             key=f"{key_prefix}_outlier_col",
-            index=None,
-            placeholder="Choose a numeric column to inspect..."
+            index=0,
         )
-        
+
         series = df[selected_col] if selected_col else None
-        
         if series is not None:
             smart_eval = audit_engine.evaluate_outlier_method(series, lang)
             outlier_method = smart_eval["method"]
             method_hint_keys = {"IQR": "hint_iqr", "Z-Score": "hint_zscore", "Modified Z-Score": "hint_modified_zscore"}
-            
-            # Fetch Safe Zones for display
-            safe_zones = audit_engine._get_safe_zones()
-            sz_text = ""
-            for zk, zv in safe_zones.items():
-                if zk.lower().replace(" ", "_") == selected_col.lower().replace(" ", "_"):
-                    lo, hi = zv.get("min"), zv.get("max")
-                    if lo is not None and hi is not None:
-                        sz_text = f" <b>(Safe Zone: {lo} ➔ {hi})</b>"
-                    elif lo is not None:
-                        sz_text = f" <b>(Safe Zone: ≥ {lo})</b>"
-                    elif hi is not None:
-                        sz_text = f" <b>(Safe Zone: ≤ {hi})</b>"
-                    break
-                    
-            st.markdown(f"""
-                <div style="background: rgba(91, 134, 229, 0.1); padding: 12px 16px; border-radius: 8px; border-left: 3px solid var(--accent-blue); margin-bottom: 16px; display: flex; flex-direction: column; gap: 4px;">
-                    <div style="font-size: 0.95rem;"><strong>✨ {get_text('smart_recommendation', lang)}: {outlier_method}</strong></div>
-                    <div style="font-size: 0.85rem; color: var(--text-secondary);">{smart_eval['reason']}</div>
-                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 4px;">{get_text(method_hint_keys[outlier_method], lang)}</div>
-                    <div style="font-size: 0.8rem; color: var(--status-warning); margin-top: 8px; border-top: 1px dashed rgba(255,255,255,0.1); padding-top: 8px; display: flex; align-items: flex-start; gap: 6px;">
-                        <div>{get_text('safe_zone_outlier_note', lang)}{sz_text}</div>
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-
+            _skew_val = smart_eval.get("skewness", 0.0)
+            _note_html = (
+                '<div style="margin:4px 0 12px 0; padding:12px 16px; background:rgba(59,130,246,0.12);'
+                ' border-left:3px solid rgba(59,130,246,0.4); border-radius:0 8px 8px 0;'
+                ' font-size:0.78rem; color:rgba(255,255,255,0.45); line-height:1.9;">'
+                f'<b style="color:rgba(255,255,255,0.6);">'
+                f'\u2728 {get_text("smart_recommendation", lang)}: '
+                f'<span style="color:#F59E0B;">{outlier_method}</span></b><br>'
+                f'{smart_eval["reason"]}'
+                f' &nbsp;\u00b7&nbsp; <b style="color:#F59E0B;">Skewness: {_skew_val}</b><br>'
+                f'<span style="color:rgba(255,255,255,0.35);">'
+                f'{get_text(method_hint_keys[outlier_method], lang)}</span>'
+                '</div>'
+            )
+            st.markdown(_note_html, unsafe_allow_html=True)
             method_map = {"IQR": "iqr", "Z-Score": "zscore", "Modified Z-Score": "modified_zscore"}
             risk_df, total_outliers = audit_engine.get_risk_records(df, selected_col, method=method_map[outlier_method])
-            
             # Plot Distribution + Bell Curve Overlay + Boundaries
             fig = visualizer.plot_outlier_distribution(series, risk_df, method=method_map[outlier_method], lang=lang)
             st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-
             if not risk_df.empty:
                 st.markdown(f"""
                     <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; margin-top:14px;">
@@ -699,23 +606,20 @@ class UiComponents:
                         <span class="status-badge badge-green">{get_text('method_label', lang, method=outlier_method)}</span>
                     </div>
                 """, unsafe_allow_html=True)
-                
+
                 if total_outliers > len(risk_df):
                     st.caption(f":material/info: Showing top {len(risk_df)} most extreme outliers of {total_outliers}.")
-                    
                 st.dataframe(risk_df, use_container_width=True, height=250, hide_index=True)
             else:
                 st.success(get_text('no_outliers_detected', lang, col=selected_col, method=outlier_method))
         else:
             st.info("Select a column to evaluate its distribution and detect outliers.")
-        
+
         return risk_df if 'risk_df' in locals() else pd.DataFrame()
 
     # ==============================================================================
     # PREPROCESSING COMPONENTS
     # ==============================================================================
-
-
 
     @staticmethod
     def pipeline_card():
@@ -724,9 +628,7 @@ class UiComponents:
         INFO = STATUS_COLORS["neutral"]["hex"]
         OK   = STATUS_COLORS["success"]["hex"]
         PURP = STATUS_COLORS["info"]["hex"]
-
         TAB_MAP = {"1": 0, "2": 0, "3": 1, "4": 1, "5": 2}
-
         step_defs = [
             ("1", "Garbage to NaN",    "Replace noise & invalid entries with NaN",           WARN, "trash"),
             ("2", "Scrub Text",         "Trim whitespace & normalize text casing",            INFO, "scissors"),
@@ -793,7 +695,6 @@ class UiComponents:
                     .replace('__RGB__', rgb).replace('__ICO__', ico)
                     .replace('__COL__', color).replace('__NUM__', num)
                     .replace('__TITLE__', title).replace('__DESC__', desc))
-
         def _connector():
             return (
                 '<div style="display:flex;align-items:center;'
@@ -816,7 +717,6 @@ class UiComponents:
             parts.append(_card(num, title, desc, color, icon_key))
             if i < len(step_defs) - 1:
                 parts.append(_connector())
-
         zap_icon = get_icon('zap', 18, WARN)
         header_html = (
             '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
@@ -848,7 +748,6 @@ class UiComponents:
         WARN = STATUS_COLORS["warning"]["hex"]
         rgb_ok   = _pp_hex(OK)
         rgb_warn = _pp_hex(WARN)
-
         st.markdown(
             f"""
             <div class="pp-done-banner" style="
@@ -911,7 +810,6 @@ class UiComponents:
         """Renders side-by-side Before/After charts for a specific column."""
         from modules.ui.visualizer import plot_histogram, plot_box
         col1, col2 = st.columns(2)
-
         with col1:
             st.markdown("**Before**")
             if column in df_original.columns:
@@ -922,7 +820,6 @@ class UiComponents:
                     st.plotly_chart(fig_box, use_container_width=True)
                 else:
                     st.bar_chart(df_original[column].value_counts().head(10))
-
         with col2:
             st.markdown("**After**")
             if column in df_cleaned.columns:
@@ -933,7 +830,6 @@ class UiComponents:
                     st.plotly_chart(fig_box, use_container_width=True)
                 else:
                     st.bar_chart(df_cleaned[column].value_counts().head(10))
-
     @staticmethod
     def method_selectbox(label, method_keys, lang, key):
         """Selectbox with localized labels mapped to internal engine keys."""
@@ -955,27 +851,23 @@ class UiComponents:
     def render_scrubber_tab(df: pd.DataFrame) -> None:
         """
         Tab 1 renderer: Data Scrubber.
-
         Displays Step 1 (garbage value replacement) and Step 2 (text formatting).
-
         Args:
             df: Working DataFrame (pre-pipeline snapshot).
         """
         from modules.core.audit_engine import _compute_noise_mask, _get_cat_columns
         from modules.utils.theme_manager import STATUS_COLORS
 
+
         WARN = STATUS_COLORS["warning"]["hex"]
         INFO = STATUS_COLORS["neutral"]["hex"]
         OK   = STATUS_COLORS["success"]["hex"]
-
         # Use module-level shared helpers (OPT-9)
         _hex      = _pp_hex
         _key      = _pp_key
         _card     = _pp_card
         _step_hdr = _pp_step_hdr
-
         cat_cols = _get_cat_columns(df).tolist()
-
         # ── Step 1: Garbage values ───────────────────────────────────────
         st.markdown(_step_hdr(1, "Garbage Value Replacement", WARN, "trash"), unsafe_allow_html=True)
         noise_rows = []
@@ -988,7 +880,6 @@ class UiComponents:
                     "Column": col, "Affected Cells": cnt,
                     "Examples": ", ".join(f"'{v}'" for v in series[mask].unique()[:4]),
                 })
-
         if noise_rows:
             total = sum(r["Affected Cells"] for r in noise_rows)
             st.markdown(
@@ -1001,9 +892,7 @@ class UiComponents:
                          column_config={"Affected Cells": st.column_config.NumberColumn(format="%d")})
         else:
             st.success(":material/check_circle: No garbage or placeholder values detected.")
-
         st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
-
         # ── Step 2: Text formatting ──────────────────────────────────────
         st.markdown(_step_hdr(2, "Text Formatting (Trim + Normalize Casing)", INFO, "type"),
                     unsafe_allow_html=True)
@@ -1020,7 +909,6 @@ class UiComponents:
                 if ws_count:        parts.append(f"{ws_count} with whitespace")
                 if casing_variants: parts.append(f"{casing_variants} casing variant groups")
                 fmt_rows.append({"Column": col, "Issues": " | ".join(parts)})
-
         if fmt_rows:
             st.markdown(
                 f"Found text quality issues in {_key(str(len(fmt_rows)))} columns. "
@@ -1031,7 +919,6 @@ class UiComponents:
             st.dataframe(pd.DataFrame(fmt_rows), use_container_width=True, hide_index=True)
         else:
             st.success(":material/check_circle: All text fields are clean — no formatting issues.")
-
         st.markdown(_card(
             f"<span style='display:inline-flex;align-items:center;vertical-align:top;margin-right:6px;'>"
             f"{get_icon('zap', 16, INFO)}</span> {_key('Action:')} Garbage values → replaced with NaN"
@@ -1039,36 +926,30 @@ class UiComponents:
             f" Mixed casing → canonicalized to most-frequent form",
             INFO,
         ), unsafe_allow_html=True)
-
     @staticmethod
     def render_missing_and_dupes_tab(df: pd.DataFrame) -> None:
         """
         Tab 2 renderer: Missing Values and Duplicate Rows.
-
         Left column  — per-column missing count, skewness, fill strategy.
         Right column — total duplicate count and drop description.
-
         Args:
             df: Working DataFrame (pre-pipeline snapshot).
         """
         from modules.utils.theme_manager import STATUS_COLORS
 
+
         INFO = STATUS_COLORS["neutral"]["hex"]
         WARN = STATUS_COLORS["warning"]["hex"]
         OK   = STATUS_COLORS["success"]["hex"]
-
         # Use module-level shared helpers (OPT-9)
         _hex      = _pp_hex
         _key      = _pp_key
         _card     = _pp_card
         _step_hdr = _pp_step_hdr
-
         col_miss, col_dupe = st.columns(2, gap="large")
-
         with col_miss:
             st.markdown(_step_hdr(3, "Handle Missing Values", INFO, "bandaid"), unsafe_allow_html=True)
             missing_cols = df.columns[df.isnull().any()].tolist()
-
             if missing_cols:
                 total_rows   = len(df)
                 missing_data = []
@@ -1109,12 +990,10 @@ class UiComponents:
                 ), unsafe_allow_html=True)
             else:
                 st.success(":material/check_circle: No missing values in the dataset.")
-
         with col_dupe:
             st.markdown(_step_hdr(4, "Drop Duplicate Rows", WARN, "copy"), unsafe_allow_html=True)
             dupes = int(df.duplicated().sum())
             total = len(df)
-
             if dupes > 0:
                 pct = dupes / total * 100
                 st.markdown(
@@ -1139,20 +1018,16 @@ class UiComponents:
                     f"This step will be skipped — dataset has no duplicate rows.",
                     OK,
                 ), unsafe_allow_html=True)
-
     @staticmethod
     def render_outlier_tab(df: pd.DataFrame, compute_preview_row_fn) -> None:
         """
         Tab 3 renderer: Outlier Treatment preview.
-
         Uses ``compute_preview_row_fn`` (passed from preprocessing.py) so that
         this renderer stays decoupled from audit_engine internals.
-
         UI design:
           • Amber note callout explaining the priority logic (no threshold shown).
           • Per-column dataframe with auto-method, outlier count, and action.
           • Legend with an animated rainbow-border Safe Zone card.
-
         Args:
             df:                    Working DataFrame.
             compute_preview_row_fn: ``(df, col, safe_zones, threshold) → dict | None``.
@@ -1160,28 +1035,23 @@ class UiComponents:
         from modules.core.audit_engine import _get_safe_zones
         from modules.utils.theme_manager import STATUS_COLORS
 
+
         INFO = STATUS_COLORS["neutral"]["hex"]
         WARN = STATUS_COLORS["warning"]["hex"]
         PURP = STATUS_COLORS["info"]["hex"]
-
         # Use module-level shared helpers (OPT-9)
         _hex      = _pp_hex
         _key      = _pp_key
         _card     = _pp_card
         _step_hdr = _pp_step_hdr
-
-
         numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
         if not numeric_cols:
             st.info("No numeric columns available for outlier treatment.")
             return
-
         threshold   = 1.5
         safe_zones  = _get_safe_zones()
-
         st.markdown(_step_hdr(5, "Outlier Treatment (Auto-Method per Column)", PURP, "ruler"),
                     unsafe_allow_html=True)
-
         # ── Amber note callout — emphasises Safe Zone priority ────────────
         st.markdown("""
         <div class="pp-outlier-note">
@@ -1210,7 +1080,6 @@ class UiComponents:
                     "Outliers Detected": row["Outliers Detected"],
                     "Action":            row["Action"],
                 })
-
         if rows:
             st.dataframe(
                 pd.DataFrame(rows),
@@ -1225,7 +1094,6 @@ class UiComponents:
             # ── Method legend: Safe Zone card uses animated rainbow border ──
             st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
             leg0, leg1, leg2, leg3 = st.columns(4)
-
             with leg0:
                 # Animated rainbow-gradient border card (defined in PREPROCESSING_STYLES)
                 st.markdown(
@@ -1267,13 +1135,11 @@ class UiComponents:
     # AUTH COMPONENTS
     # ==============================================================================
 
-
     @staticmethod
     def login_form():
         """Renders a horizontal 2-column login: brand left, form right."""
         lang = _get_current_lang()
         orbit_icon = get_icon("orbit", size=40, color="#7FB135")
-
         # Background orbs
         st.markdown("""
         <div class="login-bg">
@@ -1285,7 +1151,6 @@ class UiComponents:
 
         # 2-column layout: branding | form
         _, col_brand, col_form, _ = st.columns([0.5, 1.2, 1, 0.5])
-
         with col_brand:
             st.markdown(f"""
             <div class="login-card" style="height: 100%; display:flex; flex-direction:column; justify-content:center;">
@@ -1307,7 +1172,6 @@ class UiComponents:
                 login_clicked = st.form_submit_button(f":material/login: {get_text('login_btn', lang)}", type="primary", use_container_width=True)
 
         return username, password, login_clicked
-
     @staticmethod
     def sidebar_user_info():
         """Renders user avatar, name, role badge, and action buttons in the sidebar."""
@@ -1315,14 +1179,11 @@ class UiComponents:
         display_name = st.session_state.get('display_name', '')
         role = st.session_state.get('user_role', 'user')
         username = st.session_state.get('username', '')
-
         # Get initials for avatar
         initials = "".join([w[0].upper() for w in display_name.split()[:2]]) if display_name else username[0].upper() if username else "U"
-
         role_label = get_text('role_admin', lang) if role == 'admin' else get_text('role_user', lang)
         role_class = 'sidebar-role-admin' if role == 'admin' else 'sidebar-role-user'
         lang_label_short = "VI" if lang == 'en' else "EN"
-
         # User card
         st.sidebar.markdown(f"""
         <div class="sidebar-user-info">
@@ -1342,18 +1203,15 @@ class UiComponents:
             logout_clicked = st.button(":material/logout:", key="btn_sidebar_logout", use_container_width=True, help=get_text('logout', lang))
 
         return lang_clicked, profile_clicked, logout_clicked
-
     @staticmethod
     def sidebar_ai_chat():
         """Renders an AI Chat Assistant inside a popover in the sidebar."""
         lang = _get_current_lang()
         if 'chat_messages' not in st.session_state:
             st.session_state.chat_messages = []
-
         user = st.session_state.get('user', {})
         username = user.get('username')
         display_name = user.get('display_name')
-        
         # Streamlit avatars must be 1-2 characters or a valid URL/emoji.
         if display_name:
             words = display_name.split()
@@ -1364,15 +1222,12 @@ class UiComponents:
             initials = username[:2].upper()
         else:
             initials = "U"
-            
         # For chat display, Streamlit sometimes fails with string initials due to font/unicode length.
         # Ensure we use an emoji to prevent StreamlitAPIException
         chat_avatar = "👤"
-
         with st.sidebar:
             with st.popover(f":material/smart_toy: {get_text('ai_assistant', lang)}", use_container_width=True):
                 st.markdown(f"**✨ {get_text('ai_assistant', lang)}**")
-                
                 # Chat container
                 chat_container = st.container(height=350)
                 with chat_container:
@@ -1381,29 +1236,25 @@ class UiComponents:
                     for msg in st.session_state.chat_messages:
                         with st.chat_message(msg["role"], avatar=msg["role"]):
                             st.markdown(msg["content"])
-                
                 # Input
                 if prompt := st.chat_input(get_text('chat_placeholder', lang), key="ai_chat_input"):
                     st.session_state.chat_messages.append({"role": "user", "content": prompt})
                     with chat_container:
                         with st.chat_message("user", avatar="user"):
                             st.markdown(prompt)
-                        
                         # LLM response logic
                         from modules.core.llm_engine import stream_llm_response
                         from modules.core.data_engine import load_and_standardize, _get_file_mtime
-                        
+
+
                         active_file = st.session_state.get("active_file")
                         df = None
                         if active_file and active_file != get_text('no_data_loaded', lang):
                             df = load_and_standardize(active_file, _file_mtime=_get_file_mtime(active_file))
-
                         with st.chat_message("assistant", avatar="assistant"):
                             # Thinking UI
                             with st.spinner(get_text('chat_thinking', lang)):
                                 response_stream = stream_llm_response(prompt, st.session_state.chat_messages[:-1], df)
                                 response = st.write_stream(response_stream)
-                            
                         st.session_state.chat_messages.append({"role": "assistant", "content": response})
-                        
                         st.rerun()
