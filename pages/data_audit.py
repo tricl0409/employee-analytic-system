@@ -62,10 +62,50 @@ def _badge_bar(badges: list) -> None:
     )
 
 
+def _styled_header(
+    title: str,
+    anchor: str = "",
+    accent: str = "#3B82F6",
+) -> None:
+    """Render a premium section header consistent with preprocessing detail panel."""
+    h = accent.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    rgb = f"{r},{g},{b}"
+    id_attr = f' id="{anchor}"' if anchor else ""
+    st.markdown(
+        f'<div{id_attr} style="margin-bottom:16px; margin-top:4px; padding:14px 18px;'
+        f' background:linear-gradient(135deg, rgba({rgb},0.08) 0%, rgba({rgb},0.02) 100%);'
+        f' border:1px solid rgba({rgb},0.12); border-left:3px solid {accent};'
+        f' border-radius:0 12px 12px 0;">'
+        f'<span style="font-size:1.05rem; font-weight:700;'
+        f' color:rgba(255,255,255,0.92); letter-spacing:-0.2px;">{title}</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _skip_msg(text: str, accent: str = "#3B82F6") -> None:
+    """Styled 'all clear' card — replaces st.success()."""
+    h = accent.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    rgb = f"{r},{g},{b}"
+    st.markdown(
+        f'<div style="margin:4px 0 8px 12px; padding:10px 14px;'
+        f' background:rgba({rgb},0.03);'
+        f' border-left:2px solid rgba({rgb},0.4);'
+        f' border-radius:0 8px 8px 0;'
+        f' display:flex; align-items:center; gap:10px;'
+        f' font-size:0.8rem; color:rgba(255,255,255,0.4);">'
+        f'<span style="color:rgba({rgb},0.7); font-size:0.85rem;">✓</span>'
+        f'<span>{text}</span></div>',
+        unsafe_allow_html=True,
+    )
+
+
 def _render_executive_metrics(audit: dict, lang: str):
     """SECTION 1 — EXECUTIVE HEALTH METRICS"""
     st.markdown("<div class='audit-section'>", unsafe_allow_html=True)
-    st.markdown(f"<div class='section-header'><h3>{get_text('health_score', lang)}</h3></div>", unsafe_allow_html=True)
+    _styled_header(get_text('health_score', lang))
     m1, m2, m3, m4, m5, m6 = st.columns(6)
     h = audit["health_score"]
     h_glow = "green" if h >= 85 else ("orange" if h >= 60 else "red")
@@ -102,10 +142,11 @@ def _render_key_issues_summary(audit: dict, df: pd.DataFrame) -> None:
         else:
             issues.append(("orange", f"Noise values identified in {noise_cols}"))
     # 3. Extreme skewness
+    from modules.core.audit_engine import compute_skewness
     skewed_cols = []
     for col in df.select_dtypes(include=["number"]).columns:
-        clean = df[col].dropna()
-        if len(clean) > 2 and abs(float(clean.skew())) > 1.0:
+        skew = compute_skewness(df[col])
+        if skew is not None and abs(skew) > 1.0:
             skewed_cols.append(col)
     if skewed_cols:
         col_names = ", ".join(f'<b style="color:#F59E0B">{c}</b>' for c in skewed_cols)
@@ -113,26 +154,21 @@ def _render_key_issues_summary(audit: dict, df: pd.DataFrame) -> None:
     # 4. Duplicates
     dup_count = audit.get("duplicates", 0)
     if dup_count > 0:
-        issues.append(("red", f'<b style="color:#F59E0B">{dup_count:,}</b> duplicate rows detected'))
-    # 5. Outliers — centralised dispatch
-    outlier_cols = []
-    for col in df.select_dtypes(include=["number"]).columns:
-        series = df[col].dropna()
-        if len(series) > 2:
-            rec = audit_engine.evaluate_outlier_method(series)
-            method_key = {"IQR": "iqr", "Z-Score": "zscore", "Modified Z-Score": "modified_zscore"}[rec["method"]]
-            threshold = 1.5 if method_key == "iqr" else 3.0
-            compute_fn = audit_engine._OUTLIER_METHODS[method_key]
-            mask, _ = compute_fn(series.values, threshold)
-            if mask.sum() > 0:
-                outlier_cols.append(col)
+        issues.append(("red", f'<b style="color:#FF5B5C">{dup_count:,}</b> duplicate rows detected'))
+    # 5. Outliers — derive from cached audit summary (avoid re-computing)
+    summary_df = audit_engine.compute_data_summary(df)
+    outlier_cols = summary_df.loc[
+        ~summary_df["Outliers"].astype(str).str.startswith("None")
+        & (summary_df["Outliers"] != "—"),
+        "Column"
+    ].tolist()
     if outlier_cols:
         col_names = ", ".join(f'<b style="color:#F59E0B">{c}</b>' for c in outlier_cols)
         issues.append(("orange", f"Outliers detected in {col_names}"))
     # 6. Inconsistencies
     incon = audit.get("inconsistency_total", 0)
     if incon > 0:
-        issues.append(("red", f'<b style="color:#F59E0B">{incon:,}</b> data consistency violations found'))
+        issues.append(("red", f'<b style="color:#FF5B5C">{incon:,}</b> data consistency violations found'))
 
     # --- Severity dot colors ---
 
@@ -140,7 +176,7 @@ def _render_key_issues_summary(audit: dict, df: pd.DataFrame) -> None:
 
     # --- Section header ---
 
-    st.markdown("<div class='section-header'><h3>Key Issues Identified</h3></div>", unsafe_allow_html=True)
+    _styled_header("Key Issues Identified")
     _section_subtitle(
         "Automated diagnostic summary based on the current dataset. "
         "Each finding is ranked by <b style='color:rgba(255,255,255,0.65)'>severity</b> to prioritize data cleaning."
@@ -203,7 +239,7 @@ def _render_key_issues_summary(audit: dict, df: pd.DataFrame) -> None:
 
 def _render_issue_composition(audit: dict, lang: str):
     """SECTION — ISSUE COMPOSITION CHART (overview bar chart)"""
-    st.markdown(f"<div id='section-issue-composition' class='section-header'><h3>{get_text('issue_composition', lang)}</h3></div>", unsafe_allow_html=True)
+    _styled_header(get_text('issue_composition', lang), anchor='section-issue-composition')
     _section_subtitle("Proportional breakdown of all detected data quality issues — "
         "<b style='color:rgba(255,255,255,0.65)'>missing values</b>, "
         "<b style='color:rgba(255,255,255,0.65)'>duplicates</b>, "
@@ -221,7 +257,7 @@ def _render_issue_composition(audit: dict, lang: str):
     }
 
     if not issue_dict or total_values == 0:
-        st.info(get_text('audit_no_issue_data', lang))
+        _skip_msg(get_text('audit_no_issue_data', lang), accent='#3B82F6')
     else:
         dup_label = get_text("compose_duplicates", lang)
         display_overrides = {dup_label: audit.get("duplicates", 0)}
@@ -273,7 +309,7 @@ def _render_issue_composition(audit: dict, lang: str):
 
 def _render_missing_values(audit: dict, df: pd.DataFrame, lang: str):
     """SECTION — MISSING VALUES breakdown by column."""
-    st.markdown("<div id='section-missing-values' class='section-header'><h3>Missing Values</h3></div>", unsafe_allow_html=True)
+    _styled_header("Missing Values", anchor='section-missing-values')
     _section_subtitle("Column-level breakdown of "
         "<b style='color:rgba(255,255,255,0.65)'>null</b> and "
         "<b style='color:rgba(255,255,255,0.65)'>empty cells</b> — shows which fields "
@@ -282,7 +318,7 @@ def _render_missing_values(audit: dict, df: pd.DataFrame, lang: str):
     total_rows = audit.get("total_records", 0)
     total_missing = audit.get("missing_cells", 0)
     if total_missing == 0:
-        st.success("No missing values detected in the dataset.")
+        _skip_msg("No missing values detected in the dataset.")
         section_divider()
         return
     total_cols = audit.get("attributes", 0)
@@ -319,8 +355,8 @@ def _render_missing_values(audit: dict, df: pd.DataFrame, lang: str):
 
 
 def _render_noise_values(audit: dict, lang: str):
-    """SECTION — NOISE VALUES — placeholder/garbage values detected."""
-    st.markdown("<div id='section-noise-values' class='section-header'><h3>Noise Values</h3></div>", unsafe_allow_html=True)
+    """SECTION — NOISE VALUES — placeholder/noise values detected."""
+    _styled_header("Noise Values", anchor='section-noise-values')
     _section_subtitle("Detected "
         "<b style='color:rgba(255,255,255,0.65)'>placeholder</b> or "
         "<b style='color:rgba(255,255,255,0.65)'>corrupted values</b> such as "
@@ -331,7 +367,7 @@ def _render_noise_values(audit: dict, lang: str):
     noise_df = audit.get("noise_values", pd.DataFrame())
     noise_total = audit.get("noise_total", 0)
     if noise_total == 0 or noise_df.empty:
-        st.success(get_text('no_noise_found', lang))
+        _skip_msg(get_text('no_noise_found', lang))
         section_divider()
         return
     n_noise_cols = len(noise_df)
@@ -360,7 +396,7 @@ def _render_noise_values(audit: dict, lang: str):
 
 def _render_duplicate_rows(audit: dict, df: pd.DataFrame, lang: str):
     """SECTION — DUPLICATE ROWS with actual row content."""
-    st.markdown("<div id='section-duplicate-rows' class='section-header'><h3>Duplicate Rows</h3></div>", unsafe_allow_html=True)
+    _styled_header("Duplicate Rows", anchor='section-duplicate-rows')
     _section_subtitle("<b style='color:rgba(255,255,255,0.65)'>Exact duplicate rows</b> "
         "detected in the dataset — rows that are "
         "<b style='color:rgba(255,255,255,0.65)'>identical across all columns</b> "
@@ -368,7 +404,7 @@ def _render_duplicate_rows(audit: dict, df: pd.DataFrame, lang: str):
     dup_count = audit.get("duplicates", 0)
     total_rows = audit.get("total_records", 0)
     if dup_count == 0:
-        st.success("No duplicate rows detected in the dataset.")
+        _skip_msg("No duplicate rows detected in the dataset.")
         section_divider()
         return
     dup_pct = round(dup_count / total_rows * 100, 2) if total_rows > 0 else 0.0
@@ -414,14 +450,14 @@ def _render_duplicate_rows(audit: dict, df: pd.DataFrame, lang: str):
         )
 
     else:
-        st.info(f"**{dup_count:,}** exact duplicate rows found out of **{total_rows:,}** total records.")
+        _skip_msg(f"{dup_count:,} exact duplicate rows found out of {total_rows:,} total records.", accent='#3B82F6')
     st.markdown(_BACK_TO_OVERVIEW, unsafe_allow_html=True)
     section_divider()
 
 
 def _render_inconsistencies(audit: dict, lang: str):
     """SECTION — INCONSISTENCIES — categorical data quality issues."""
-    st.markdown("<div id='section-inconsistencies' class='section-header'><h3>Inconsistencies</h3></div>", unsafe_allow_html=True)
+    _styled_header("Inconsistencies", anchor='section-inconsistencies')
     _section_subtitle("Categorical data quality issues — "
         "<b style='color:rgba(255,255,255,0.65)'>mixed casing</b>, "
         "<b style='color:rgba(255,255,255,0.65)'>leading/trailing whitespace</b>, "
@@ -430,7 +466,7 @@ def _render_inconsistencies(audit: dict, lang: str):
     consistency_df = audit.get("consistency", pd.DataFrame())
     it = audit.get("inconsistency_total", 0)
     if it == 0 or consistency_df.empty:
-        st.success(get_text('all_consistent', lang))
+        _skip_msg(get_text('all_consistent', lang))
         st.markdown(_BACK_TO_OVERVIEW, unsafe_allow_html=True)
         section_divider()
         return
@@ -460,11 +496,11 @@ def _render_inconsistencies(audit: dict, lang: str):
 
 def _render_data_summary(df: pd.DataFrame, lang: str):
     """SECTION — STATISTICAL OVERVIEW (per-column descriptive statistics)."""
-    st.markdown(f"<div class='section-header'><h3>{get_text('audit_data_summary_title', lang)}</h3></div>", unsafe_allow_html=True)
+    _styled_header(get_text('audit_data_summary_title', lang))
     _section_subtitle(get_text('audit_data_summary_caption', lang))
     summary_df = audit_engine.compute_data_summary(df)
     if summary_df.empty:
-        st.info("No data available for summary.")
+        _skip_msg("No data available for summary.", accent='#3B82F6')
         section_divider()
         return
     n_total = len(summary_df)
@@ -524,7 +560,7 @@ def _render_data_summary(df: pd.DataFrame, lang: str):
 
 def _render_category_frequency(df: pd.DataFrame, lang: str):
     """SECTION — CATEGORY FREQUENCY BAR CHART."""
-    st.markdown("<div class='section-header'><h3>Category Frequency</h3></div>", unsafe_allow_html=True)
+    _styled_header("Category Frequency", accent='#3B82F6')
     _section_subtitle(
         "Visualize the <b style='color:rgba(255,255,255,0.65)'>value distribution</b> of categorical columns. "
         "<b style='color:rgba(255,255,255,0.65)'>Rare categories</b> (\u2264 1% frequency) are highlighted in <b style='color:#F59E0B'>amber</b>."
@@ -532,7 +568,7 @@ def _render_category_frequency(df: pd.DataFrame, lang: str):
 
     cat_cols = df.select_dtypes(include=["object", "category"]).columns.tolist()
     if not cat_cols:
-        st.info("No categorical columns available.")
+        _skip_msg("No categorical columns available.", accent='#3B82F6')
         section_divider()
         return
     selected_col = st.selectbox(
@@ -559,7 +595,7 @@ def _render_category_frequency(df: pd.DataFrame, lang: str):
 
 def _render_risk_inspector(df: pd.DataFrame, lang: str):
     """SECTION — RISK RECORDS INSPECTOR"""
-    st.markdown(f"<div class='section-header'><h3>{get_text('risk_records_inspector', lang)}</h3></div>", unsafe_allow_html=True)
+    _styled_header(get_text('risk_records_inspector', lang))
     _section_subtitle(get_text('audit_risk_inspector_caption', lang))
     UiComponents.outlier_inspector(df, lang, key_prefix="audit")
     section_divider()
@@ -606,8 +642,7 @@ def main():
         set_state(audit_hash_key, current_hash)
     audit = get_state(audit_cache_key)
 
-    # --- SAVE AUDIT RESULT TO data/temp/ FOR DEBUG ---
-    save_temp_csv(audit, prefix="audit_full_result")
+    # Note: audit is a dict (not a DataFrame) — save_temp_csv is not applicable
 
     # --- EXECUTIVE METRICS (always visible above tabs) ---
     _render_executive_metrics(audit, lang)

@@ -32,12 +32,10 @@ import plotly.graph_objects as go
 
 from modules.core import data_engine
 from modules.ui import (
-    page_header,
-    section_divider,
-    workspace_status,
-    active_file_scan_progress_bar,
-    metric_card,
+    page_header, workspace_status,
+    active_file_scan_progress_bar, section_divider, metric_card,
 )
+from modules.ui.components import styled_alert
 from modules.ui.visualizer import (
     CHART_LAYOUT, MUTED_COLOR, BRIGHT_TEXT, GRID_COLOR,
     ZERO_LINE_COLOR, BLUE, GREEN, ORANGE, RED,
@@ -607,7 +605,7 @@ def _chart_capgain_dual_heatmap(
     df2[cg_col] = pd.to_numeric(df2[cg_col], errors="coerce").fillna(0)
     df2["has_cg"] = (df2[cg_col] > 0).astype(int)
     df2["hi"]     = _high_mask(df2[income_col]).astype(int)
-    df2 = df2.dropna(subset=[edu_col, occ_col])
+    df2 = df2.dropna(subset=[edu_col, occ_col, income_col])
 
     edu_order = sorted(df2[edu_col].unique())
     occ_order = sorted(df2[occ_col].unique())
@@ -620,8 +618,11 @@ def _chart_capgain_dual_heatmap(
         [1.0,  "rgba(180,20,0,1.0)"],
     ]
 
-    def _heatmap_trace(pivot, label):
-        cnt = df2.pivot_table(index=edu_col, columns=occ_col, values="hi", aggfunc="count")
+    def _heatmap_trace(pivot, label, source_df):
+        """Build heatmap trace with sample-count filter from *source_df*."""
+        cnt = source_df.pivot_table(
+            index=edu_col, columns=occ_col, values="hi", aggfunc="count",
+        )
         pivot = pivot.reindex(index=[e for e in edu_order if e in pivot.index],
                               columns=[o for o in occ_order if o in pivot.columns])
         cnt   = cnt.reindex(index=pivot.index, columns=pivot.columns)
@@ -658,10 +659,10 @@ def _chart_capgain_dual_heatmap(
                    gridcolor="rgba(0,0,0,0)", autorange="reversed"),
     )
 
-    fig_l = go.Figure(_heatmap_trace(pct_cg, "% CapGain>0"))
+    fig_l = go.Figure(_heatmap_trace(pct_cg, "% CapGain>0", df2))
     fig_l.update_layout(**_layout_base)
 
-    fig_r = go.Figure(_heatmap_trace(pct_hi, "% >50K | CapGain>0"))
+    fig_r = go.Figure(_heatmap_trace(pct_hi, "% >50K | CapGain>0", df_hi))
     fig_r.update_layout(**_layout_base)
 
     return fig_l, fig_r
@@ -688,7 +689,7 @@ def _chart_capgain_analysis(
     df2["hi"]      = _high_mask(df2[income_col])
     df2["income_g"] = df2["hi"].map({True: ">50K", False: "≤50K"})
     df2["log2cg"]  = np.log2(df2[cg_col].clip(lower=1))
-    df2 = df2.dropna(subset=[edu_col, occ_col])
+    df2 = df2.dropna(subset=[edu_col, occ_col, income_col])
 
     _INCOME_COLOR = {">50K": "rgba(255,159,67,0.75)", "≤50K": "rgba(91,134,229,0.60)"}
 
@@ -841,15 +842,18 @@ def _render_kpis(df_raw: pd.DataFrame, cols: dict) -> None:
 # ==============================================================================
 
 def _panel_header(title: str, subtitle: str = "") -> None:
-    """Prominent chart panel heading — amber accent."""
+    """Prominent chart panel heading — amber accent, gradient bg."""
     subtitle_html = (
         f"<div style='color:rgba(255,255,255,0.38);font-size:0.76rem;"
         f"font-weight:400;margin-top:4px;letter-spacing:0.1px;'>{subtitle}</div>"
         if subtitle else ""
     )
     st.markdown(
-        f"<div style='border-left:3px solid rgba(255,159,67,0.65);"
-        f"padding-left:12px;margin-bottom:10px;'>"
+        f"<div style='padding:14px 18px;margin-bottom:12px;"
+        f"background:linear-gradient(135deg, rgba(255,159,67,0.08) 0%, rgba(255,159,67,0.02) 100%);"
+        f"border:1px solid rgba(255,159,67,0.12);"
+        f"border-left:3px solid rgba(255,159,67,0.65);"
+        f"border-radius:0 12px 12px 0;'>"
         f"<div style='font-size:1.05rem;font-weight:800;color:#FFFFFF;"
         f"letter-spacing:-0.3px;line-height:1.3;'>{title}</div>"
         f"{subtitle_html}"
@@ -895,31 +899,42 @@ def main() -> None:
     else:
         df = st.session_state[_cfg_key[0]]
 
-    # ── Resolve column names on TRANSFORMED df ─────────────────────────────
-    cols = _resolve_cols(df)
+    # ── Resolve column names ────────────────────────────────────────────────
+    # Charts use transformed df; KPIs use raw df — resolve both independently.
+    cols     = _resolve_cols(df)
+    cols_raw = _resolve_cols(df_raw)
 
     if not cols["income"]:
-        st.warning(
-            "⚠️ No **income** column found. "
-            "Ensure the dataset has a column named `income` or `salary`."
+        styled_alert(
+            "No <b>income</b> column found. "
+            "Ensure the dataset has a column named <code>income</code> or <code>salary</code>.",
+            "warning",
         )
         return
 
+    # ── Case-insensitive binning config key finder ─────────────────────────
+    def _find_cfg_key(target: str) -> str | None:
+        """Find the actual key in binning_cfg matching *target* case-insensitively."""
+        norm = target.lower().replace("_", "")
+        return next(
+            (k for k in binning_cfg if k.lower().replace("_", "") == norm),
+            None,
+        )
+
     # ── Extract ordered labels for binned columns ──────────────────────────
-    # Age: get labels from binning_cfg if available, else unique values
-    def _ordered_labels(col_rule_key: str, df_col: str | None) -> list[str]:
-        if df_col is None:
+    def _ordered_labels(col_rule_key: str | None, df_col: str | None) -> list[str]:
+        if df_col is None or col_rule_key is None:
             return []
-        rule = binning_cfg.get(col_rule_key, {})
+        rule = binning_cfg.get(col_rule_key) or {}
         if rule.get("type") == "bin" and rule.get("labels"):
             return rule["labels"]
         return sorted(df[df_col].dropna().unique().tolist())
 
-    age_labels = _ordered_labels("Age", cols["age"])
+    age_labels = _ordered_labels(_find_cfg_key("Age"), cols["age"])
 
     # ── KPI Cards — always from RAW (original numeric age, hours, etc.) ────
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-    _render_kpis(df_raw, cols)
+    _render_kpis(df_raw, cols_raw)
     section_divider()
 
     # ── Compute insights dynamically ───────────────────────────────────────
@@ -1046,12 +1061,12 @@ def main() -> None:
     if income_col and occ_col and hours_col:
         # Note: bubble chart needs numeric hours — use df_raw hours if binned
         hours_for_bubble = hours_col
-        if binning_cfg.get("Hours_per_Week", {}).get("type") == "bin":
+        _hours_cfg_key = _find_cfg_key("Hours_per_Week")
+        if _hours_cfg_key and binning_cfg[_hours_cfg_key].get("type") == "bin":
             # hours was binned → use original numeric column from df_raw
-            raw_cols   = _resolve_cols(df_raw)
             df_bubble  = df.copy()
-            if raw_cols["hours"]:
-                df_bubble[hours_col] = df_raw[raw_cols["hours"]]
+            if cols_raw["hours"]:
+                df_bubble[hours_col] = df_raw[cols_raw["hours"]]
         else:
             df_bubble = df
 
@@ -1178,9 +1193,12 @@ def main() -> None:
             st.plotly_chart(fo_bar, use_container_width=True, key="ch_occ_bar2")
         with c2o:
             st.plotly_chart(fo_box, use_container_width=True, key="ch_occ_box")
+        # Dynamic: show top-2 occupations by >50K rate
+        _top2 = occ_rates.nlargest(2).index.tolist() if 'occ_rates' in dir() else [top_occ]
+        _top2_html = " and ".join(f"<b>{o}</b>" for o in _top2)
         st.markdown(
             _insight_box(
-                f"<b>{top_occ}</b> and <b>Administrative/Sales</b> occupations are becoming "
+                f"{_top2_html} occupations are becoming "
                 f"<b>\"promising fields\"</b> for income mobility — they combine high >50K rates "
                 f"with notable capital gain activity among their top earners."
             ),

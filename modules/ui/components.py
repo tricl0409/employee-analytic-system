@@ -26,6 +26,54 @@ def _pp_hex(h: str) -> str:
     return f"{r},{g},{b}"
 
 
+def _styled_status(text: str, accent: str = "#7FB135") -> None:
+    """Lightweight styled status message — replaces st.success/st.info globally."""
+    h = accent.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    rgb = f"{r},{g},{b}"
+    st.markdown(
+        f'<div style="margin:4px 0 8px 12px; padding:10px 14px;'
+        f' background:rgba({rgb},0.03);'
+        f' border-left:2px solid rgba({rgb},0.4);'
+        f' border-radius:0 8px 8px 0;'
+        f' font-size:0.8rem; color:rgba(255,255,255,0.4);">'
+        f'<span style="color:rgba({rgb},0.7); font-size:0.85rem;">\u2713</span>'
+        f' {text}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def styled_alert(text: str, kind: str = "info") -> None:
+    """Styled notification — replaces st.success/error/warning/info globally.
+
+    Args:
+        text: Message content (supports HTML).
+        kind: 'success' | 'info' | 'warning' | 'error'
+    """
+    _CFG = {
+        "success": ("#7FB135", "check_circle"),
+        "info":    ("#3B82F6", "zap"),
+        "warning": ("#F59E0B", "alert_triangle"),
+        "error":   ("#EF4444", "x_circle"),
+    }
+    color, icon_key = _CFG.get(kind, _CFG["info"])
+    icon_svg = get_icon(icon_key, size=15, color=color)
+    h = color.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    rgb = f"{r},{g},{b}"
+    st.markdown(
+        f'<div style="margin:4px 0 8px 0; padding:10px 14px;'
+        f' background:rgba({rgb},0.06);'
+        f' border-left:2px solid rgba({rgb},0.5);'
+        f' border-radius:0 8px 8px 0;'
+        f' font-size:0.82rem; color:rgba({rgb},0.85);'
+        f' display:flex; align-items:flex-start; gap:8px;">'
+        f'<span style="flex-shrink:0;margin-top:1px;">{icon_svg}</span>'
+        f'<span style="line-height:1.6;">{text}</span></div>',
+        unsafe_allow_html=True,
+    )
+
+
 def _pp_key(t: str) -> str:
     """Wrap text in a white bold <strong> tag."""
     return f"<strong style='color:white;'>{t}</strong>"
@@ -223,7 +271,7 @@ class UiComponents:
 
         # === TABLE ROWS ===
         if lib_df.empty:
-            st.info(get_text('no_files_match', lang))
+            _styled_status(get_text('no_files_match', lang), accent='#3B82F6')
             return
         # Pagination Logic
         ITEMS_PER_PAGE = 5
@@ -260,7 +308,7 @@ class UiComponents:
                         st.session_state.preview_name = row['name']
                         st.rerun()
                 except Exception as e:
-                    st.error(f"Error: {e}")
+                    styled_alert(f"Error: {e}", "error")
             if c5.button(":material/check_circle:", key=f"btn_act_{row['name']}", use_container_width=True, help=get_text('active', lang)):
                 st.session_state.active_file = row['name']
                 st.session_state.scroll_to_modules = True
@@ -417,27 +465,34 @@ class UiComponents:
 <div id='module-selection-anchor'></div>
 <div class="section-title">{t('overview_section_journey')}</div>
 <div class="section-divider"></div>
-<div class="cards-grid">
-    <a target="_self" class="journey-card journey-card-1">
-        <div class="journey-step step-1">1</div>
+<div class="journey-grid">
+    <div class="journey-card journey-card-1">
+        <div class="journey-accent accent-1"></div>
+        <div class="journey-step step-1"><span>1</span></div>
+        <div class="journey-label label-1">STEP 1</div>
         <div class="journey-title">{t('overview_journey_audit_title')}</div>
         <div class="journey-desc">{t('overview_journey_audit_desc')}</div>
-    </a>
-    <a target="_self" class="journey-card journey-card-2">
-        <div class="journey-step step-2">2</div>
+    </div>
+    <div class="journey-arrow">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+    </div>
+    <div class="journey-card journey-card-2">
+        <div class="journey-accent accent-2"></div>
+        <div class="journey-step step-2"><span>2</span></div>
+        <div class="journey-label label-2">STEP 2</div>
         <div class="journey-title">{t('overview_journey_preprocess_title')}</div>
         <div class="journey-desc">{t('overview_journey_preprocess_desc')}</div>
-    </a>
-    <a target="_self" class="journey-card journey-card-3">
-        <div class="journey-step step-3">3</div>
+    </div>
+    <div class="journey-arrow">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+    </div>
+    <div class="journey-card journey-card-3">
+        <div class="journey-accent accent-3"></div>
+        <div class="journey-step step-3"><span>3</span></div>
+        <div class="journey-label label-3">STEP 3</div>
         <div class="journey-title">{t('overview_journey_eda_title')}</div>
         <div class="journey-desc">{t('overview_journey_eda_desc')}</div>
-    </a>
-    <a target="_self" class="journey-card journey-card-4">
-        <div class="journey-step step-4">4</div>
-        <div class="journey-title">{t('overview_journey_feat_title')}</div>
-        <div class="journey-desc">{t('overview_journey_feat_desc')}</div>
-    </a>
+    </div>
 </div>
 <div class="two-columns">
     <!-- Left Column: Research Objectives -->
@@ -563,7 +618,7 @@ class UiComponents:
         """
         numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
         if not numeric_cols:
-            st.info(get_text('no_numeric_distribution', lang))
+            _styled_status(get_text('no_numeric_distribution', lang), accent='#3B82F6')
             return None
         # Calculate Smart Recommendation first
         selected_col = st.selectbox(
@@ -611,9 +666,9 @@ class UiComponents:
                     st.caption(f":material/info: Showing top {len(risk_df)} most extreme outliers of {total_outliers}.")
                 st.dataframe(risk_df, use_container_width=True, height=250, hide_index=True)
             else:
-                st.success(get_text('no_outliers_detected', lang, col=selected_col, method=outlier_method))
+                _styled_status(get_text('no_outliers_detected', lang, col=selected_col, method=outlier_method))
         else:
-            st.info("Select a column to evaluate its distribution and detect outliers.")
+            _styled_status("Select a column to evaluate its distribution and detect outliers.", accent='#3B82F6')
 
         return risk_df if 'risk_df' in locals() else pd.DataFrame()
 
@@ -630,7 +685,7 @@ class UiComponents:
         PURP = STATUS_COLORS["info"]["hex"]
         TAB_MAP = {"1": 0, "2": 0, "3": 1, "4": 1, "5": 2}
         step_defs = [
-            ("1", "Garbage to NaN",    "Replace noise & invalid entries with NaN",           WARN, "trash"),
+            ("1", "Noise to NaN",    "Replace noise & invalid entries with NaN",           WARN, "trash"),
             ("2", "Scrub Text",         "Trim whitespace & normalize text casing",            INFO, "scissors"),
             ("3", "Fill Missing",       "Impute nulls: median (numeric) / mode (categorical)", OK,  "bandaid"),
             ("4", "Drop Duplicates",    "Remove exact duplicate rows from dataset",            WARN, "copy"),
@@ -742,52 +797,122 @@ class UiComponents:
         )
 
     @staticmethod
-    def pipeline_done_banner(res_file, rows_before, rows_after, dupes_dropped):
-        """Renders the post-completion banner with metrics grid and save info."""
+    def pipeline_done_banner(res_file, rows_before, rows_after, dupes_dropped, stats=None):
+        """Renders the post-completion banner with metrics, comparison table, and save info.
+
+        The heatmaps are rendered separately by the caller via Plotly
+        (``stats['corr_before']`` / ``stats['corr_after']``).
+        """
+        if stats is None:
+            stats = {}
         OK   = STATUS_COLORS["success"]["hex"]
         WARN = STATUS_COLORS["warning"]["hex"]
         rgb_ok   = _pp_hex(OK)
-        rgb_warn = _pp_hex(WARN)
+
+        rows_removed = rows_before - rows_after
+
+        # ── Comparison table rows ─────────────────────────────────────────
+        comparison = stats.get("comparison", [])
+        table_rows_html = ""
+        for metric_name, before_val, after_val in comparison:
+            # Color: green if resolved (after == 0), else amber
+            if after_val == 0:
+                after_color = OK
+                after_display = f'<span style="color:{OK};font-weight:700;">✓ 0</span>'
+            else:
+                after_color = WARN
+                after_display = f'<span style="color:{WARN};font-weight:700;">{after_val:,}</span>'
+
+            table_rows_html += (
+                '<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">'
+                '<td style="padding:10px 14px;font-size:0.82rem;color:rgba(255,255,255,0.7);'
+                f'font-weight:600;">{metric_name}</td>'
+                '<td style="padding:10px 14px;text-align:center;font-size:0.88rem;'
+                f'font-weight:700;color:{WARN};">{before_val:,}</td>'
+                f'<td style="padding:10px 14px;text-align:center;font-size:0.88rem;">'
+                f'{after_display}</td>'
+                '</tr>'
+            )
+
         st.markdown(
-            f"""
-            <div class="pp-done-banner" style="
-                background:linear-gradient(135deg,rgba(166,206,57,0.09) 0%,rgba(91,134,229,0.06) 100%);
-                border:1px solid rgba({rgb_ok},0.35);border-radius:14px;
-                padding:22px 26px;margin-bottom:20px;">
-                <div style="color:{OK};font-size:1.05rem;font-weight:800;margin-bottom:16px;
-                            display:flex;align-items:center;gap:8px;letter-spacing:-0.3px;">
-                    <span style="display:inline-flex;align-items:center;">{get_icon('check_circle',22,OK)}</span>
-                    Preprocessing Complete!
-                </div>
-                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px;">
-                    <div class="pp-metric-card" style="background:rgba(255,255,255,0.04);
-                         border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px;text-align:center;">
-                        <div style="color:var(--text-muted);font-size:0.68rem;text-transform:uppercase;
-                                    letter-spacing:1px;margin-bottom:4px;">Rows Before</div>
-                        <div style="color:white;font-size:1.5rem;font-weight:800;">{rows_before:,}</div>
-                    </div>
-                    <div class="pp-metric-card" style="background:rgba(255,255,255,0.04);
-                         border:1px solid rgba({rgb_ok},0.25);border-radius:10px;padding:14px;text-align:center;">
-                        <div style="color:var(--text-muted);font-size:0.68rem;text-transform:uppercase;
-                                    letter-spacing:1px;margin-bottom:4px;">Rows After</div>
-                        <div style="color:{OK};font-size:1.5rem;font-weight:800;">{rows_after:,}</div>
-                    </div>
-                    <div class="pp-metric-card" style="background:rgba(255,255,255,0.04);
-                         border:1px solid rgba({rgb_warn},0.2);border-radius:10px;padding:14px;text-align:center;">
-                        <div style="color:var(--text-muted);font-size:0.68rem;text-transform:uppercase;
-                                    letter-spacing:1px;margin-bottom:4px;">Duplicates Dropped</div>
-                        <div style="color:{WARN};font-size:1.5rem;font-weight:800;">{dupes_dropped:,}</div>
-                    </div>
-                </div>
-                <div style="color:var(--text-secondary);font-size:0.83rem;
-                            border-top:1px solid rgba(255,255,255,0.07);padding-top:12px;
-                            display:flex;align-items:center;gap:6px;">
-                    {get_icon('download', 14, 'var(--text-muted)')}
-                    Saved as <strong style="color:white;margin:0 2px;">{res_file}</strong>
-                    &mdash; workspace switched automatically.
-                </div>
-            </div>
-            """,
+            '<div class="pp-done-banner" style="'
+            'background:linear-gradient(135deg,rgba(166,206,57,0.09) 0%,rgba(91,134,229,0.06) 100%);'
+            f'border:1px solid rgba({rgb_ok},0.35);border-radius:14px;'
+            'padding:22px 26px;margin-bottom:20px;">'
+
+            # ── Header ────────────────────────────────────────────────────
+            f'<div style="color:{OK};font-size:1.05rem;font-weight:800;margin-bottom:16px;'
+            'display:flex;align-items:center;gap:8px;letter-spacing:-0.3px;">'
+            f'<span style="display:inline-flex;align-items:center;">{get_icon("check_circle",22,OK)}</span>'
+            'Preprocessing Complete!'
+            f'<span style="background:rgba({rgb_ok},0.12);border-radius:12px;font-size:0.6rem;'
+            f'padding:2px 10px;font-weight:600;color:{OK};letter-spacing:0.5px;'
+            'margin-left:4px;">8 / 8 STEPS</span>'
+            '</div>'
+
+            # ── Metric cards row (3 cards) ────────────────────────────────
+            '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px;">'
+
+            # Card 1: Rows Before
+            '<div style="background:rgba(255,255,255,0.04);'
+            'border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px;text-align:center;">'
+            '<div style="color:var(--text-muted);font-size:0.62rem;text-transform:uppercase;'
+            'letter-spacing:1px;margin-bottom:4px;">Rows Before</div>'
+            f'<div style="color:white;font-size:1.3rem;font-weight:800;">{rows_before:,}</div>'
+            '</div>'
+
+            # Card 2: Rows After
+            '<div style="background:rgba(255,255,255,0.04);'
+            f'border:1px solid rgba({rgb_ok},0.25);border-radius:10px;padding:14px;text-align:center;">'
+            '<div style="color:var(--text-muted);font-size:0.62rem;text-transform:uppercase;'
+            'letter-spacing:1px;margin-bottom:4px;">Rows After</div>'
+            f'<div style="color:{OK};font-size:1.3rem;font-weight:800;">{rows_after:,}</div>'
+            '</div>'
+
+            # Card 3: Rows Cleaned
+            '<div style="background:rgba(255,255,255,0.04);'
+            f'border:1px solid rgba({_pp_hex(WARN)},0.2);border-radius:10px;padding:14px;text-align:center;">'
+            '<div style="color:var(--text-muted);font-size:0.62rem;text-transform:uppercase;'
+            'letter-spacing:1px;margin-bottom:4px;">Rows Cleaned</div>'
+            f'<div style="color:{WARN};font-size:1.3rem;font-weight:800;">{rows_removed:,}</div>'
+            '</div>'
+            '</div>'
+
+            # ── Comparison Table ──────────────────────────────────────────
+            '<div style="border-top:1px solid rgba(255,255,255,0.06);padding-top:16px;margin-bottom:16px;">'
+            '<div style="font-size:0.75rem;font-weight:700;color:rgba(255,255,255,0.5);'
+            'text-transform:uppercase;letter-spacing:0.8px;margin-bottom:12px;">'
+            'Data Quality — Before vs After</div>'
+            '<table style="width:100%;border-collapse:collapse;">'
+            '<thead><tr style="border-bottom:1px solid rgba(255,255,255,0.1);">'
+            '<th style="padding:8px 14px;text-align:left;font-size:0.7rem;'
+            'text-transform:uppercase;letter-spacing:0.8px;color:rgba(255,255,255,0.4);'
+            'font-weight:600;">Metric</th>'
+            '<th style="padding:8px 14px;text-align:center;font-size:0.7rem;'
+            'text-transform:uppercase;letter-spacing:0.8px;color:rgba(255,255,255,0.4);'
+            'font-weight:600;">Before</th>'
+            '<th style="padding:8px 14px;text-align:center;font-size:0.7rem;'
+            'text-transform:uppercase;letter-spacing:0.8px;color:rgba(255,255,255,0.4);'
+            'font-weight:600;">After</th>'
+            '</tr></thead>'
+            f'<tbody>{table_rows_html}</tbody>'
+            '</table></div>'
+
+            # ── Save info footer ──────────────────────────────────────────
+            '<div style="color:var(--text-secondary);font-size:0.83rem;'
+            'border-top:1px solid rgba(255,255,255,0.07);padding-top:12px;'
+            'line-height:1.8;">'
+            f'{get_icon("download", 14, "var(--text-muted)")} '
+            f'<strong style="color:white;">Data Cleaned</strong> → '
+            f'<span style="color:rgba(255,255,255,0.7);">{res_file}</span><br>'
+            f'{get_icon("download", 14, "var(--text-muted)")} '
+            f'<strong style="color:white;">Feature Encoded</strong> → '
+            f'<span style="color:rgba(255,255,255,0.7);">'
+            f'{stats.get("encoded_filename", "")}</span><br>'
+            '<span style="font-size:0.75rem;color:rgba(255,255,255,0.35);">'
+            'Workspace switched to cleaned file automatically.</span>'
+            '</div>'
+            '</div>',
             unsafe_allow_html=True,
         )
 
@@ -851,7 +976,7 @@ class UiComponents:
     def render_scrubber_tab(df: pd.DataFrame) -> None:
         """
         Tab 1 renderer: Data Scrubber.
-        Displays Step 1 (garbage value replacement) and Step 2 (text formatting).
+        Displays Step 1 (noise value replacement) and Step 2 (text formatting).
         Args:
             df: Working DataFrame (pre-pipeline snapshot).
         """
@@ -868,8 +993,8 @@ class UiComponents:
         _card     = _pp_card
         _step_hdr = _pp_step_hdr
         cat_cols = _get_cat_columns(df).tolist()
-        # ── Step 1: Garbage values ───────────────────────────────────────
-        st.markdown(_step_hdr(1, "Garbage Value Replacement", WARN, "trash"), unsafe_allow_html=True)
+        # ── Step 1: Noise values ───────────────────────────────────────
+        st.markdown(_step_hdr(1, "Noise Value Replacement", WARN, "trash"), unsafe_allow_html=True)
         noise_rows = []
         for col in cat_cols:
             series = df[col].dropna().astype(str)
@@ -883,7 +1008,7 @@ class UiComponents:
         if noise_rows:
             total = sum(r["Affected Cells"] for r in noise_rows)
             st.markdown(
-                f"Detected {_key(f'{total:,} garbage cells')} across "
+                f"Detected {_key(f'{total:,} noise cells')} across "
                 f"{_key(str(len(noise_rows)))} columns — they will be replaced with "
                 f"{_key('NaN')} so that they are handled as missing values in Step 4.",
                 unsafe_allow_html=True,
@@ -891,7 +1016,7 @@ class UiComponents:
             st.dataframe(pd.DataFrame(noise_rows), use_container_width=True, hide_index=True,
                          column_config={"Affected Cells": st.column_config.NumberColumn(format="%d")})
         else:
-            st.success(":material/check_circle: No garbage or placeholder values detected.")
+            _styled_status("No noise or placeholder values detected.")
         st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
         # ── Step 2: Text formatting ──────────────────────────────────────
         st.markdown(_step_hdr(2, "Text Formatting (Trim + Normalize Casing)", INFO, "type"),
@@ -918,10 +1043,10 @@ class UiComponents:
             )
             st.dataframe(pd.DataFrame(fmt_rows), use_container_width=True, hide_index=True)
         else:
-            st.success(":material/check_circle: All text fields are clean — no formatting issues.")
+            _styled_status("All text fields are clean \u2014 no formatting issues.")
         st.markdown(_card(
             f"<span style='display:inline-flex;align-items:center;vertical-align:top;margin-right:6px;'>"
-            f"{get_icon('zap', 16, INFO)}</span> {_key('Action:')} Garbage values → replaced with NaN"
+            f"{get_icon('zap', 16, INFO)}</span> {_key('Action:')} Noise values → replaced with NaN"
             f" &nbsp;·&nbsp; Whitespace → stripped &nbsp;·&nbsp;"
             f" Mixed casing → canonicalized to most-frequent form",
             INFO,
@@ -958,14 +1083,10 @@ class UiComponents:
                     dtype = "Numeric" if pd.api.types.is_numeric_dtype(df[mc]) else "Categorical"
                     skew_display = None
                     if dtype == "Numeric":
-                        series   = df[mc].dropna()
-                        skew_val = series.skew() if len(series) > 2 else float("nan")
-                        if pd.notna(skew_val):
-                            skew_display = float(skew_val)
-                        strategy = ("Mean" if (len(series) > 2 and pd.notna(skew_val) and abs(skew_val) < 0.5)
-                                    else "Median")
-                    else:
-                        strategy = "Mode"
+                        from modules.core.audit_engine import compute_skewness
+                        skew_display = compute_skewness(df[mc])
+                    from modules.core.audit_engine import recommend_fill_strategy
+                    strategy = recommend_fill_strategy(df[mc]).capitalize()
                     missing_data.append({"Column": mc, "Type": dtype, "Missing": cnt,
                                          "% Missing": cnt / total_rows * 100,
                                          "Skewness": skew_display, "Strategy": strategy})
@@ -989,7 +1110,7 @@ class UiComponents:
                     INFO,
                 ), unsafe_allow_html=True)
             else:
-                st.success(":material/check_circle: No missing values in the dataset.")
+                _styled_status("No missing values in the dataset.")
         with col_dupe:
             st.markdown(_step_hdr(4, "Drop Duplicate Rows", WARN, "copy"), unsafe_allow_html=True)
             dupes = int(df.duplicated().sum())
@@ -1011,7 +1132,7 @@ class UiComponents:
                     WARN,
                 ), unsafe_allow_html=True)
             else:
-                st.success(":material/check_circle: No duplicate rows found.")
+                _styled_status("No duplicate rows found.")
                 st.markdown(_card(
                     f"<span style='display:inline-flex;align-items:center;vertical-align:middle;margin-right:6px;'>"
                     f"{get_icon('check_circle', 16, OK)}</span> "
@@ -1030,7 +1151,7 @@ class UiComponents:
           • Legend with an animated rainbow-border Safe Zone card.
         Args:
             df:                    Working DataFrame.
-            compute_preview_row_fn: ``(df, col, safe_zones, threshold) → dict | None``.
+            compute_preview_row_fn: ``(df, col, safe_zones) → dict | None``.
         """
         from modules.core.audit_engine import _get_safe_zones
         from modules.utils.theme_manager import STATUS_COLORS
@@ -1046,9 +1167,8 @@ class UiComponents:
         _step_hdr = _pp_step_hdr
         numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
         if not numeric_cols:
-            st.info("No numeric columns available for outlier treatment.")
+            _styled_status("No numeric columns available for outlier treatment.", accent='#3B82F6')
             return
-        threshold   = 1.5
         safe_zones  = _get_safe_zones()
         st.markdown(_step_hdr(5, "Outlier Treatment (Auto-Method per Column)", PURP, "ruler"),
                     unsafe_allow_html=True)
@@ -1071,7 +1191,7 @@ class UiComponents:
         # Build preview rows via the shared helper
         rows = []
         for col in numeric_cols:
-            row = compute_preview_row_fn(df, col, safe_zones, threshold)
+            row = compute_preview_row_fn(df, col, safe_zones)
             if row is not None:
                 rows.append({
                     "Column":            row["Column"],
@@ -1129,7 +1249,7 @@ class UiComponents:
                     PURP,
                 ), unsafe_allow_html=True)
         else:
-            st.info("No numeric columns had enough data for outlier analysis.")
+            _styled_status("No numeric columns had enough data for outlier analysis.", accent='#3B82F6')
 
     # ==============================================================================
     # AUTH COMPONENTS

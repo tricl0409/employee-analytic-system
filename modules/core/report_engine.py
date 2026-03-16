@@ -142,16 +142,17 @@ def draw_missing_profile(pdf, df_missing):
     pdf.set_font(FONT_FAMILY, '', 10)
     
     fill = False
-    for _, row in df_missing.iterrows():
+    for row in df_missing.itertuples(index=False):
         # Zebra Striping colors
         if fill:
             pdf.set_fill_color(240, 245, 255)
         else:
             pdf.set_fill_color(255, 255, 255)
-            
-        pdf.cell(col_widths[0], 8, str(row.get('Column', '')), border=1, fill=True, align='L')
-        pdf.cell(col_widths[1], 8, f"{row.get('Missing Count', 0):,}", border=1, fill=True, align='C')
-        pct = row.get('Percentage', 0)
+
+        pdf.cell(col_widths[0], 8, str(getattr(row, 'Column', '')), border=1, fill=True, align='L')
+        missing_count = getattr(row, 'Missing_Count', getattr(row, 'Missing Count', 0))
+        pdf.cell(col_widths[1], 8, f"{missing_count:,}", border=1, fill=True, align='C')
+        pct = getattr(row, 'Percentage', 0)
         pdf.cell(col_widths[2], 8, f"{pct:.2f}%", border=1, fill=True, align='C')
         pdf.ln()
         fill = not fill

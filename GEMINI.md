@@ -289,6 +289,55 @@ Dùng `section_divider()` từ `components.py`. **KHÔNG** tự viết `<hr>` ho
 | `margin` | `16px 0 14px 0` |
 | `border-top` | `1px solid rgba(255,255,255,0.06)` |
 
+### 4.6. File Format
+
+| Quy tắc | Chi tiết |
+|---------|--------|
+| **Line endings** | Tất cả file source code (`.py`, `.md`, `.css`, `.html`, `.json`, `.toml`) **BẮT BUỘC** dùng **LF** (`\n`). KHÔNG bao giờ commit file với CRLF (`\r\n`) |
+| **Encoding** | UTF-8 without BOM |
+| **Trailing newline** | Mọi file phải kết thúc bằng **đúng 1 dòng trống** (newline cuối file) |
+| **Trailing whitespace** | KHÔNG để khoảng trắng thừa cuối dòng |
+
+> **QUAN TRỌNG:** Khi tạo hoặc sửa file, Agent **PHẢI** đảm bảo output dùng LF.
+> Nếu phát hiện file hiện có dùng CRLF, chuyển đổi sang LF trước khi commit.
+
+### 4.7. Centralized Common Processing
+
+> Mọi logic xử lý dữ liệu dùng chung (shared/common) **BẮT BUỘC** phải được
+> centralize vào module tương ứng trong `modules/core/`. Các page files trong
+> `pages/` chỉ được **gọi** (import & invoke), KHÔNG được **tự implement** logic.
+
+#### Nguyên tắc phân layer
+
+| Layer | Thư mục | Trách nhiệm | Ví dụ |
+|-------|---------|-------------|-------|
+| **Core** | `modules/core/` | Business logic, algorithms, data transformations | `audit_engine.py`, `preprocessing_engine.py` |
+| **UI** | `modules/ui/` | Rendering, layout, visual components | `components.py`, `visualizer.py` |
+| **Utils** | `modules/utils/` | Helpers, config, i18n — KHÔNG chứa business logic | `helpers.py`, `localization.py` |
+| **Pages** | `pages/` | Orchestration — kết nối Core ↔ UI, KHÔNG chứa logic riêng | `data_audit.py`, `preprocessing.py` |
+
+#### Quy tắc bắt buộc
+
+1. **Threshold, constants, magic numbers**: Định nghĩa DUY NHẤT ở `modules/core/` rồi export.
+   Các file khác import — KHÔNG tự inline giá trị.
+   ```python
+   # ✅ ĐÚNG: Import từ core
+   from modules.core.audit_engine import default_outlier_threshold
+   threshold = default_outlier_threshold(method_key)
+
+   # ❌ SAI: Tự inline logic
+   threshold = 1.5 if method_key == "iqr" else 3.0
+   ```
+
+2. **Mapping dictionaries** (method maps, color maps, config maps): Đặt ở core module,
+   export dưới dạng constant hoặc function. Pages chỉ import.
+
+3. **Detection / classification logic**: Mọi hàm detect (outliers, noise, missing patterns)
+   chỉ tồn tại ở `audit_engine.py`. Các page **KHÔNG** tự viết detection logic riêng.
+
+4. **Khi phát hiện code trùng lặp**: Nếu thấy ≥ 2 nơi implement cùng logic,
+   **BẮT BUỘC** refactor: extract vào core module → import ở mọi nơi cần.
+
 ---
 
 ## 5. Quy trình làm việc (Workflow)
@@ -326,6 +375,43 @@ Dùng `section_divider()` từ `components.py`. **KHÔNG** tự viết `<hr>` ho
 6. **Interactive feedback**: Mọi element clickable phải có hover state với transition ≥ 0.25s
 7. **Review**: Screenshot / preview để đảm bảo visual consistency với các page khác
 
+### 5.5. Quy trình Git
+
+#### 5.5.1. Commit Messages
+
+Format: `<type>: <mô tả ngắn gọn bằng tiếng Anh>`
+
+| Type | Mục đích |
+|------|----------|
+| `feat` | Tính năng mới |
+| `fix` | Sửa bug |
+| `refactor` | Tái cấu trúc code (không thay đổi behavior) |
+| `style` | Thay đổi CSS/UI (không ảnh hưởng logic) |
+| `docs` | Cập nhật tài liệu |
+| `chore` | Cấu hình, dependencies, scripts |
+| `perf` | Tối ưu hiệu suất |
+
+**Quy tắc:**
+- Dòng đầu ≤ 72 ký tự
+- Viết ở thì hiện tại: `fix: correct outlier threshold` (không phải `fixed` hay `fixes`)
+- Nếu cần giải thích thêm, để dòng trống rồi viết body
+
+#### 5.5.2. Branching
+
+| Branch | Mục đích |
+|--------|----------|
+| `main` | Production-ready, luôn stable |
+| `dev` | Tích hợp features đang phát triển |
+| `feat/<tên>` | Feature branches (tách từ `dev`) |
+| `fix/<tên>` | Hotfix branches |
+
+#### 5.5.3. Trước khi commit
+
+1. **Kiểm tra line endings**: Đảm bảo tất cả file dùng LF
+2. **Không commit**: `data/uploads/`, `data/temp/`, `data/system.db`, `__pycache__/`, `.streamlit/`
+3. **Review changes**: `git diff --staged` trước khi commit
+4. **Atomic commits**: Mỗi commit giải quyết **một vấn đề** duy nhất
+
 ---
 
 ## 6. Nguyên tắc phản hồi (Response Guidelines)
@@ -350,6 +436,8 @@ Dùng `section_divider()` từ `components.py`. **KHÔNG** tự viết `<hr>` ho
 > - Dùng `st.experimental_*` (deprecated APIs)
 > - Bỏ qua error handling trong data loading functions
 > - Dùng `.apply(lambda...)` khi có thể vectorize bằng pandas native
+> - Commit file với CRLF line endings — luôn dùng LF
+> - Inline logic đã có sẵn ở `modules/core/` — luôn import từ single source of truth
 
 > **LUÔN LUÔN:**
 > - Giữ backward compatibility với session state keys hiện có

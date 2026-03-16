@@ -37,12 +37,11 @@ if st.session_state.authenticated:
     quality_p = st.Page("pages/data_audit.py", title=get_text("data_audit", lang), url_path="data_audit")
     prep_p = st.Page("pages/preprocessing.py", title=get_text("preprocessing", lang), url_path="preprocessing")
     eda_p = st.Page("pages/eda.py", title=get_text("eda", lang), url_path="eda")
-    feature_prep_p = st.Page("pages/feature_preparation.py", title=get_text("feature_prep", lang), url_path="feature_prep")
     conclusion_p   = st.Page("pages/conclusion.py", title="Conclusion & Recommendation", url_path="conclusion")
 
     nav_dict = {
         get_text("nav_system", lang): [home_p],
-        get_text("nav_analytics", lang): [quality_p, prep_p, eda_p, feature_prep_p, conclusion_p],
+        get_text("nav_analytics", lang): [quality_p, prep_p, eda_p, conclusion_p],
     }
 
     if st.session_state.get('user_role') == 'admin':

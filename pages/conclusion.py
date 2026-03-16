@@ -18,6 +18,7 @@ import streamlit as st
 
 from modules.core import data_engine
 from modules.ui import page_header, workspace_status, active_file_scan_progress_bar, section_divider
+from modules.ui.components import styled_alert
 from modules.ui.icons import get_icon
 from modules.utils.helpers import _ensure_workspace_active
 
@@ -46,15 +47,20 @@ _OK_DIM       = "rgba(82,196,26,0.08)"
 
 def _section_header(icon_key: str, title: str, subtitle: str = "") -> None:
     icon_svg = get_icon(icon_key, size=18, color=_AMBER)
+    sub_html = (
+        f"<div style='font-size:0.76rem;color:{_TEXT_LO};margin-top:4px;'>{subtitle}</div>"
+        if subtitle else ""
+    )
     st.markdown(
-        f"""
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;margin-top:4px;">
-          {icon_svg}
-          <span style="font-size:1.08rem;font-weight:800;color:{_TEXT_HI};
-                       letter-spacing:-0.3px;">{title}</span>
-        </div>
-        {"<div style='font-size:0.76rem;color:" + _TEXT_LO + ";margin-bottom:16px;padding-left:28px;'>" + subtitle + "</div>" if subtitle else "<div style='margin-bottom:16px;'></div>"}
-        """,
+        f"<div style='padding:14px 18px;margin-bottom:16px;margin-top:4px;"
+        f"background:linear-gradient(135deg, rgba(255,159,67,0.08) 0%, rgba(255,159,67,0.02) 100%);"
+        f"border:1px solid {_AMBER_BORDER};border-left:3px solid {_AMBER_BRIGHT};"
+        f"border-radius:0 12px 12px 0;'>"
+        f"<div style='display:flex;align-items:center;gap:10px;'>"
+        f"{icon_svg}"
+        f"<span style='font-size:1.08rem;font-weight:800;color:{_TEXT_HI};"
+        f"letter-spacing:-0.3px;'>{title}</span>"
+        f"</div>{sub_html}</div>",
         unsafe_allow_html=True,
     )
 
@@ -272,11 +278,8 @@ def _compute_insights(df: pd.DataFrame) -> dict:
     # Education
     edu = cols["education"]
     if edu:
-        edu_rate = (
-            df.groupby(df[edu].astype(str))[inc]
-            .apply(lambda s: _high_mask(s).mean() * 100)
-            .round(1)
-        )
+        hi_by_edu = _high_mask(df[inc])
+        edu_rate = (hi_by_edu.groupby(df[edu].astype(str)).mean() * 100).round(1)
         out["best_edu"]       = edu_rate.idxmax()
         out["best_edu_rate"]  = round(edu_rate.max(), 1)
         out["worst_edu_rate"] = round(edu_rate.min(), 1)
@@ -285,11 +288,8 @@ def _compute_insights(df: pd.DataFrame) -> dict:
     # Occupation
     occ = cols["occupation"]
     if occ:
-        occ_rate = (
-            df.groupby(df[occ].astype(str))[inc]
-            .apply(lambda s: _high_mask(s).mean() * 100)
-            .round(1)
-        )
+        hi_by_occ = _high_mask(df[inc])
+        occ_rate = (hi_by_occ.groupby(df[occ].astype(str)).mean() * 100).round(1)
         out["best_occ"]      = occ_rate.idxmax()
         out["best_occ_pct"]  = round(occ_rate.max(), 1)
         out["worst_occ"]     = occ_rate.idxmin()
@@ -299,11 +299,8 @@ def _compute_insights(df: pd.DataFrame) -> dict:
     # Gender
     sex = cols["sex"]
     if sex:
-        sex_rate = (
-            df.groupby(df[sex].astype(str))[inc]
-            .apply(lambda s: _high_mask(s).mean() * 100)
-            .round(1)
-        )
+        hi_by_sex = _high_mask(df[inc])
+        sex_rate = (hi_by_sex.groupby(df[sex].astype(str)).mean() * 100).round(1)
         vals       = sex_rate.to_dict()
         male_key   = next((k for k in vals if "male" in k.lower() and "fe" not in k.lower()), None)
         female_key = next((k for k in vals if "female" in k.lower() or k.lower() == "f"), None)
@@ -337,17 +334,14 @@ def _compute_insights(df: pd.DataFrame) -> dict:
     out["missing_pct"]   = round(missing_total / max(N * len(df.columns), 1) * 100, 2)
     out["dupes"]         = int(df.duplicated().sum())
 
-    noise = 0
+    from modules.core.audit_engine import detect_noise_values
+    noise_df, noise_total = detect_noise_values(df)
     noise_cols = []
-    for col in df.select_dtypes(include="object").columns:
-        cnt = int(df[col].dropna().astype(str).str.strip().isin(
-            {"?", "-", "na", "null", "none", "n/a", "undefined", ""}
-        ).sum())
-        if cnt > 0:
-            noise += cnt
-            noise_cols.append(f"<b>{col}</b>&nbsp;({cnt:,})")
-    out["noise_count"] = noise
-    out["noise_pct"]   = round(noise / max(N, 1) * 100, 2)
+    if not noise_df.empty:
+        for _, noise_row in noise_df.iterrows():
+            noise_cols.append(f"<b>{noise_row['Column']}</b>&nbsp;({noise_row['Noise Count']:,})")
+    out["noise_count"] = noise_total
+    out["noise_pct"]   = round(noise_total / max(N, 1) * 100, 2)
     out["noise_cols"]  = noise_cols[:5]
 
     return out
@@ -364,7 +358,7 @@ def _render_executive_summary(ins: dict) -> None:
     )
 
     if not ins.get("inc_col"):
-        st.info("No income/salary column detected in this dataset.")
+        styled_alert("No income/salary column detected in this dataset.", "info")
         return
 
     pct_hi = ins.get("pct_high", "—")
@@ -464,7 +458,7 @@ def _render_integrity_lessons(ins: dict) -> None:
         col_a += _finding_card_html(
             "check_circle", "Data Quality · Noise",
             "No noise or placeholder values detected",
-            "All categorical columns are free of garbage tokens such as '?', '-', or 'null'. "
+            "All categorical columns are free of noise tokens such as '?', '-', or 'null'. "
             "Categorical distribution charts reflect true value frequencies "
             "and require no token-removal correction.",
             severity="ok",
@@ -659,7 +653,7 @@ def main() -> None:
     active_file_scan_progress_bar("_conclusion_done")
 
     if df_raw.empty:
-        st.warning("No data loaded. Please upload and activate a dataset first.")
+        styled_alert("No data loaded. Please upload and activate a dataset first.", "warning")
         return
 
     # ── Cache insights (recompute only when file or schema changes) ─────────

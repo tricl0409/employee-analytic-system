@@ -256,6 +256,22 @@ _OUTLIER_METHODS = {
 }
 
 
+def default_outlier_threshold(method_key: str) -> float:
+    """Return the canonical default threshold for a given outlier detection method.
+
+    **Single source of truth** — every module that needs a method-aware
+    threshold MUST call this function instead of inlining the logic.
+
+    Args:
+        method_key: One of ``'iqr'``, ``'zscore'``, ``'modified_zscore'``.
+
+    Returns:
+        ``1.5`` for IQR (fence multiplier), ``3.0`` for Z-score variants
+        (standard-deviation count).
+    """
+    return 1.5 if method_key == "iqr" else 3.0
+
+
 def get_risk_records(
     df: pd.DataFrame,
     column: str,
@@ -269,7 +285,7 @@ def get_risk_records(
         df:        Source DataFrame.
         column:    Name of the numeric column to inspect.
         method:    One of ``'iqr'``, ``'zscore'``, ``'modified_zscore'``.
-        threshold: Detection threshold.  Defaults to admin config; falls back to
+        threshold: Detection threshold.  Defaults via ``default_outlier_threshold``;
                    1.5 for IQR and 3.0 for Z-score variants.
         max_rows:  Cap on returned rows to avoid overwhelming the UI.
     Returns:
@@ -286,8 +302,7 @@ def get_risk_records(
     if len(vals) < 3:
         return _EMPTY
     if threshold is None:
-        # Method-aware defaults: IQR uses fence multiplier, Z-score variants use std-dev count
-        threshold = 1.5 if method == "iqr" else 3.0
+        threshold = default_outlier_threshold(method)
     compute_fn = _OUTLIER_METHODS.get(method)
     if compute_fn is None:
         return _EMPTY
@@ -306,6 +321,56 @@ def get_risk_records(
     return flagged.head(max_rows), total_outliers
 
 
+def compute_skewness(series: pd.Series) -> float | None:
+    """Compute skewness of a numeric series — **single source of truth**.
+
+    Guards:
+      - Returns ``None`` when fewer than 3 non-null values exist.
+      - Returns ``0.0`` when the standard deviation is zero (constant column).
+
+    All other modules **MUST** call this instead of computing ``.skew()``
+    inline to guarantee consistent precision (3 decimal places) and
+    identical guard logic across the entire application.
+
+    Args:
+        series: Numeric pandas Series (may contain NaNs — they are dropped).
+
+    Returns:
+        Skewness rounded to 3 decimal places, or ``None``.
+    """
+    clean = series.dropna()
+    if len(clean) < 3:
+        return None
+    if clean.std() == 0:
+        return 0.0
+    return round(float(clean.skew()), 3)
+
+
+def recommend_fill_strategy(series: pd.Series) -> str:
+    """Recommend the best missing-value fill strategy for a column.
+
+    **Single source of truth** for the skewness-based threshold that
+    determines whether to fill with ``mean`` or ``median``.
+
+    Rules:
+      - Non-numeric (object / category) → ``"mode"``.
+      - Numeric with ``|skewness| < 0.5`` (near-symmetrical) → ``"mean"``.
+      - Numeric otherwise (skewed or insufficient data) → ``"median"``.
+
+    Args:
+        series: A pandas Series (may contain NaNs).
+
+    Returns:
+        One of ``"mean"``, ``"median"``, ``"mode"``.
+    """
+    if not pd.api.types.is_numeric_dtype(series):
+        return "mode"
+    skew = compute_skewness(series)
+    if skew is not None and abs(skew) < 0.5:
+        return "mean"
+    return "median"
+
+
 def evaluate_outlier_method(s: pd.Series, lang: str = "en") -> Dict[str, str]:
     """
     Evaluate the skewness of a numeric column and recommend an outlier
@@ -313,18 +378,18 @@ def evaluate_outlier_method(s: pd.Series, lang: str = "en") -> Dict[str, str]:
     Returns a dict with:
       - 'method': "Z-Score" | "IQR" | "Modified Z-Score"
       - 'reason': Localized explanation string
+      - 'skewness': float (rounded to 3 decimals)
     """
-    clean_s = s.dropna()
-    if len(clean_s) < 3 or clean_s.std() == 0:
+    skew = compute_skewness(s)
+    if skew is None:
         return {"method": "IQR", "reason": get_text("rec_iqr", lang), "skewness": 0.0}
-    skew = float(clean_s.skew())
     abs_skew = abs(skew)
     if abs_skew < 0.5:
-        return {"method": "Z-Score", "reason": get_text("rec_zscore", lang), "skewness": round(skew, 2)}
+        return {"method": "Z-Score", "reason": get_text("rec_zscore", lang), "skewness": skew}
     elif abs_skew <= 1.0:
-        return {"method": "IQR", "reason": get_text("rec_iqr", lang), "skewness": round(skew, 2)}
+        return {"method": "IQR", "reason": get_text("rec_iqr", lang), "skewness": skew}
     else:
-        return {"method": "Modified Z-Score", "reason": get_text("rec_mod_z", lang), "skewness": round(skew, 2)}
+        return {"method": "Modified Z-Score", "reason": get_text("rec_mod_z", lang), "skewness": skew}
 
 # =============================================================================
 # COLUMN REPORT
@@ -396,15 +461,14 @@ def compute_data_summary(df: pd.DataFrame) -> pd.DataFrame:
         if pd.api.types.is_numeric_dtype(series):
             clean_vals = series.dropna()
             # Distribution (skewness classification)
-            if len(clean_vals) > 2:
-                skew_val = float(clean_vals.skew())
-                skew_rounded = round(skew_val, 2)
+            skew_val = compute_skewness(clean_vals)
+            if skew_val is not None:
                 if abs(skew_val) < 0.5:
-                    distribution = f"Approximately Symmetric ({skew_rounded})"
+                    distribution = f"Approximately Symmetric ({skew_val})"
                 elif skew_val > 0:
-                    distribution = f"Right Skewed ({skew_rounded})"
+                    distribution = f"Right Skewed ({skew_val})"
                 else:
-                    distribution = f"Left Skewed ({skew_rounded})"
+                    distribution = f"Left Skewed ({skew_val})"
             # Outliers — use centralised _OUTLIER_METHODS dispatch (same as Inspector)
             has_outliers = False
             if len(clean_vals) > 2:
@@ -413,8 +477,8 @@ def compute_data_summary(df: pd.DataFrame) -> pd.DataFrame:
                 method = rec["method"]
                 # Map display name → dispatch key
                 method_key = {"IQR": "iqr", "Z-Score": "zscore", "Modified Z-Score": "modified_zscore"}[method]
-                # Method-aware default thresholds (same as get_risk_records)
-                default_threshold = 1.5 if method_key == "iqr" else 3.0
+                # Method-aware default thresholds (single source of truth)
+                default_threshold = default_outlier_threshold(method_key)
                 compute_fn = _OUTLIER_METHODS[method_key]
                 mask, _ = compute_fn(clean_vals.values, default_threshold)
                 n_outliers = int(mask.sum())

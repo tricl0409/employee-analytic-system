@@ -30,14 +30,16 @@ def load_and_standardize(active_file: str, _file_mtime: float = 0.0) -> pd.DataF
     try:
         file_path = os.path.join(DATA_DIR, active_file)
         if not os.path.exists(file_path):
-             st.error(f"File not found: {file_path}")
+             from modules.ui.components import styled_alert
+             styled_alert(f"File not found: {file_path}", "error")
              return pd.DataFrame()
         df = pd.read_csv(file_path)
         # Vectorized string operation for column cleaning
         df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
         return df
     except Exception as e:
-        st.error(f"Error loading file: {e}")
+        from modules.ui.components import styled_alert
+        styled_alert(f"Error loading file: {e}", "error")
         return pd.DataFrame()
 
 def process_inventory(library: List[Dict], search_query: str = "") -> pd.DataFrame:

@@ -13,6 +13,7 @@ import streamlit as st
 from datetime import datetime
 from modules.core.auth_engine import AuthEngine
 from modules.ui import page_header
+from modules.ui.components import styled_alert
 from modules.utils.localization import get_text
 
 
@@ -41,7 +42,7 @@ def main():
 
     # --- RBAC GUARD ---
     if st.session_state.get("user_role") != "admin":
-        st.error(get_text("access_denied", lang))
+        styled_alert(get_text("access_denied", lang), "error")
         st.stop()
 
     # --- PAGE HEADER ---
@@ -89,13 +90,13 @@ def main():
                     if new_username and new_password:
                         success, err = AuthEngine.create_user(new_username, new_password, new_display, new_role)
                         if success:
-                            st.success(get_text("user_created", lang, username=new_username))
+                            styled_alert(get_text("user_created", lang, username=new_username), "success")
                             st.session_state["show_add_user"] = False
                             st.rerun()
                         else:
-                            st.error(get_text(err, lang, username=new_username))
+                            styled_alert(get_text(err, lang, username=new_username), "error")
                     else:
-                        st.error(get_text("login_failed", lang))
+                        styled_alert(get_text("login_failed", lang), "error")
             with c2:
                 if st.button(
                     f":material/close: {get_text('cancel', lang)}",
@@ -131,7 +132,15 @@ def main():
     st.markdown("<hr style='margin: 6px 0 12px 0; border:0; border-top:1px solid rgba(255,255,255,0.05);'>", unsafe_allow_html=True)
 
     if not users:
-        st.info(get_text("no_users_found", lang))
+        st.markdown(
+            '<div style="margin:4px 0 8px 12px; padding:10px 14px;'
+            ' background:rgba(59,130,246,0.03);'
+            ' border-left:2px solid rgba(59,130,246,0.4);'
+            ' border-radius:0 8px 8px 0;'
+            ' font-size:0.8rem; color:rgba(255,255,255,0.4);">'
+            f'\u2713 {get_text("no_users_found", lang)}</div>',
+            unsafe_allow_html=True,
+        )
         return
 
     for user in users:
@@ -175,10 +184,10 @@ def main():
             if c7.button(":material/delete:", key=f"btn_del_{user['username']}", use_container_width=True, help=get_text("delete", lang)):
                 success, err = AuthEngine.delete_user(user["username"], current_user)
                 if success:
-                    st.success(get_text("user_deleted", lang, username=user["username"]))
+                    styled_alert(get_text("user_deleted", lang, username=user["username"]), "success")
                     st.rerun()
                 else:
-                    st.error(get_text(err, lang))
+                    styled_alert(get_text(err, lang), "error")
         else:
             c7.markdown("<div class='user-table-cell' style='color:var(--text-muted); font-size:0.7rem;'>—</div>", unsafe_allow_html=True)
 
@@ -187,8 +196,20 @@ def main():
     if editing_username:
         edit_user = AuthEngine.get_user(editing_username)
         if edit_user:
-            st.markdown("---")
-            st.markdown(f"### {get_text('edit_user', lang)}: **{editing_username}**")
+            st.markdown(
+                '<div style="margin:16px 0;"><hr style="border:none;'
+                'border-top:1px solid rgba(255,255,255,0.06);margin:0;"></div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                f'<div style="padding:12px 16px; margin-bottom:14px;'
+                f' background:linear-gradient(135deg, rgba(59,130,246,0.08) 0%, rgba(59,130,246,0.02) 100%);'
+                f' border:1px solid rgba(59,130,246,0.12); border-left:3px solid #3B82F6;'
+                f' border-radius:0 12px 12px 0;">'
+                f'<span style="font-size:1rem; font-weight:700;'
+                f' color:rgba(255,255,255,0.92);">{get_text("edit_user", lang)}: {editing_username}</span></div>',
+                unsafe_allow_html=True,
+            )
 
             col_edit1, col_edit2 = st.columns(2)
             with col_edit1:
@@ -236,10 +257,10 @@ def main():
 
                     if errors:
                         for e in errors:
-                            st.error(e)
+                            styled_alert(e, "error")
                     else:
                         st.session_state["editing_user"] = None
-                        st.success(get_text("profile_updated", lang))
+                        styled_alert(get_text("profile_updated", lang), "success")
                         st.rerun()
 
             with col_cancel:
