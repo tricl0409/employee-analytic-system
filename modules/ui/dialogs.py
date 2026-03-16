@@ -109,7 +109,7 @@ def profile_dialog():
 
         if st.button(f":material/save: {get_text('edit_profile', lang)}", key="btn_save_profile", type="primary", use_container_width=True):
             AuthEngine.update_profile(username, display_name=display_name)
-            st.success(get_text('profile_updated', lang))
+            st.markdown(_alert_html(get_text('profile_updated', lang), kind='success'), unsafe_allow_html=True)
             st.rerun()
 
     with tab_password:
@@ -119,9 +119,11 @@ def profile_dialog():
 
         if st.button(f":material/lock: {get_text('change_password', lang)}", key="btn_change_pw", type="primary", use_container_width=True):
             if new_pw != confirm_pw:
-                st.error(get_text('password_mismatch', lang))
+                from modules.ui.components import styled_alert
+                styled_alert(get_text('password_mismatch', lang), "error")
             elif AuthEngine.change_password(username, old_pw, new_pw):
-                st.success(get_text('password_changed', lang))
+                st.markdown(_alert_html(get_text('password_changed', lang), kind='success'), unsafe_allow_html=True)
             else:
-                st.error(get_text('password_wrong', lang))
+                from modules.ui.components import styled_alert
+                styled_alert(get_text('password_wrong', lang), "error")
 

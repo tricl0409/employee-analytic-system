@@ -1,4 +1,4 @@
-from .components import UiComponents
+from .components import UiComponents, styled_alert
 
 section_divider = UiComponents.section_divider
 active_file_scan_progress_bar = UiComponents.active_file_scan_progress_bar

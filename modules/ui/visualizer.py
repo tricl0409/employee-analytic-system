@@ -274,19 +274,21 @@ def plot_outlier_distribution(
     
     # Very rough calculation of fences for visual reference
     fence_lo, fence_hi = None, None
+    from modules.core.audit_engine import default_outlier_threshold
+    _thresh = default_outlier_threshold(method)
     if method == "iqr":
         Q1 = clean_s.quantile(0.25)
         Q3 = clean_s.quantile(0.75)
         IQR = Q3 - Q1
-        fence_lo, fence_hi = Q1 - 1.5 * IQR, Q3 + 1.5 * IQR
+        fence_lo, fence_hi = Q1 - _thresh * IQR, Q3 + _thresh * IQR
     elif method == "zscore":
-        fence_lo, fence_hi = mean_val - 3 * std_val, mean_val + 3 * std_val
+        fence_lo, fence_hi = mean_val - _thresh * std_val, mean_val + _thresh * std_val
     elif method == "modified_zscore":
         median = clean_s.median()
         mad = (clean_s - median).abs().median()
         if mad != 0:
-            fence_lo = median - 3 * mad / 0.6745
-            fence_hi = median + 3 * mad / 0.6745
+            fence_lo = median - _thresh * mad / 0.6745
+            fence_hi = median + _thresh * mad / 0.6745
 
     if fence_lo is not None and fence_hi is not None:
         # Draw threshold lines if they fall within the visible plot area
@@ -896,7 +898,8 @@ def plot_boxplot(
     import numpy as np
 
     if threshold is None:
-        threshold = 1.5 if method == "iqr" else 3.0
+        from modules.core.audit_engine import default_outlier_threshold
+        threshold = default_outlier_threshold(method)
 
     fig = go.Figure(go.Box(
         x=series,

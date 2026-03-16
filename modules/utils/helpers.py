@@ -17,7 +17,8 @@ def _ensure_workspace_active():
     no_data_loaded = get_text('no_data_loaded', lang)
     
     if not active_file or active_file == no_data_loaded:
-        st.info(get_text('select_dataset_first', lang, page=get_text('overview', lang)))
+        from modules.ui.components import styled_alert
+        styled_alert(get_text('select_dataset_first', lang, page=get_text('overview', lang)), "info")
         st.stop()
 
 

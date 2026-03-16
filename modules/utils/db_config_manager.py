@@ -81,7 +81,7 @@ _DEFAULT_BINNING_CONFIG = {
             "Public":        ["Federal-gov", "Local-gov", "State-gov"],
             "Private":       ["Private"],
             "Self-employed": ["Self-emp-inc", "Self-emp-not-inc"],
-            "Other":         ["Without-pay", "Never-worked", "?"],
+            "Others":         ["Without-pay", "Never-worked", "?"],
         },
     },
     "Marital_Status": {
@@ -100,7 +100,7 @@ _DEFAULT_BINNING_CONFIG = {
             "Administrative/Sales":    ["Adm-clerical", "Sales"],
             "Blue-collar":             ["Craft-repair", "Machine-op-inspct", "Transport-moving", "Handlers-cleaners", "Farming-fishing"],
             "Service":                 ["Other-service", "Priv-house-serv", "Protective-serv", "Armed-Forces"],
-            "Other":                   ["?"],
+            "Others":                   ["?"],
         },
     },
     "Native_Country": {

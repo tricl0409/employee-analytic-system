@@ -184,6 +184,24 @@ SIDEBAR_STYLES = """
         filter: drop-shadow(0 0 4px rgba(96, 165, 250, 0.7)) !important;
     }
 
+    /* ── Inactive Nav Item — Hover Feedback ── */
+    [data-testid="stSidebarNavItems"] li div[data-testid="stSidebarNavLink"],
+    [data-testid="stSidebarNav"] a {
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        border-left: 3px solid transparent !important;
+        border-radius: 0 8px 8px 0 !important;
+    }
+    [data-testid="stSidebarNavItems"] li div[data-testid="stSidebarNavLink"]:not([aria-current="page"]):hover,
+    [data-testid="stSidebarNav"] a:not([aria-current="page"]):hover {
+        background: rgba(255, 255, 255, 0.04) !important;
+        border-left: 3px solid rgba(255, 255, 255, 0.15) !important;
+        transform: translateX(2px) !important;
+    }
+    [data-testid="stSidebarNavItems"] li div[data-testid="stSidebarNavLink"]:not([aria-current="page"]):hover span,
+    [data-testid="stSidebarNav"] a:not([aria-current="page"]):hover span {
+        color: rgba(255, 255, 255, 0.85) !important;
+    }
+
     /* Push branding to bottom of sidebar using flex */
     [data-testid="stSidebar"] [data-testid="stSidebarContent"] {
         display: flex !important;
@@ -1097,79 +1115,150 @@ OVERVIEW_FEATURE_STYLES = """
         border-radius: 2px;
     }
 
+    /* ── Journey Timeline Grid ── */
+    @keyframes journey-fadeIn {
+        from { opacity: 0; transform: translateY(16px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+    .journey-grid {
+        display: flex;
+        align-items: stretch;
+        gap: 0;
+        margin-bottom: 50px;
+    }
+    .journey-arrow {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        width: 36px;
+        padding-bottom: 32px;
+        opacity: 0.6;
+    }
+
     /* Journey Cards */
     .journey-card {
-        background: rgba(255,255,255,0.03);
-        border: 1px solid rgba(255,255,255,0.05);
-        border-radius: 12px;
-        padding: 30px 20px;
+        flex: 1;
+        position: relative;
+        background: rgba(255,255,255,0.025);
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 16px;
+        padding: 32px 24px 28px;
         text-align: center;
-        transition: all 0.3s ease;
         cursor: pointer;
-        text-decoration: none !important;
-        display: block;
-        color: inherit !important;
-        height: 100%;
+        overflow: hidden;
+        transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        animation: journey-fadeIn 0.5s ease-out both;
     }
+    .journey-card-1 { animation-delay: 0s; }
+    .journey-card-2 { animation-delay: 0.12s; }
+    .journey-card-3 { animation-delay: 0.24s; }
+
+    /* Top accent bar */
+    .journey-accent {
+        position: absolute;
+        top: 0;
+        left: 20%;
+        right: 20%;
+        height: 3px;
+        border-radius: 0 0 4px 4px;
+        transition: all 0.35s ease;
+    }
+    .accent-1 { background: linear-gradient(90deg, transparent, var(--accent-blue), transparent); }
+    .accent-2 { background: linear-gradient(90deg, transparent, var(--accent-green), transparent); }
+    .accent-3 { background: linear-gradient(90deg, transparent, var(--accent-orange), transparent); }
+    .journey-card:hover .journey-accent {
+        left: 10%;
+        right: 10%;
+        height: 3px;
+        filter: brightness(1.3);
+    }
+
+    /* Card hover states */
     .journey-card-1:hover {
-        background: rgba(255,255,255,0.08);
-        border-color: var(--accent-blue);
-        transform: translateY(-5px);
-        box-shadow: 0 10px 20px var(--status-neutral-bg);
+        background: rgba(59,130,246,0.05);
+        border-color: rgba(59,130,246,0.25);
+        transform: translateY(-6px);
+        box-shadow: 0 12px 32px rgba(59,130,246,0.1), 0 0 20px rgba(59,130,246,0.05);
     }
     .journey-card-2:hover {
-        background: rgba(255,255,255,0.08);
-        border-color: var(--accent-green);
-        transform: translateY(-5px);
-        box-shadow: 0 10px 20px var(--status-success-bg);
+        background: rgba(127,177,53,0.05);
+        border-color: rgba(127,177,53,0.25);
+        transform: translateY(-6px);
+        box-shadow: 0 12px 32px rgba(127,177,53,0.1), 0 0 20px rgba(127,177,53,0.05);
     }
     .journey-card-3:hover {
-        background: rgba(255,255,255,0.08);
-        border-color: var(--accent-orange);
-        transform: translateY(-5px);
-        box-shadow: 0 10px 20px var(--status-warning-bg);
+        background: rgba(242,112,36,0.05);
+        border-color: rgba(242,112,36,0.25);
+        transform: translateY(-6px);
+        box-shadow: 0 12px 32px rgba(242,112,36,0.1), 0 0 20px rgba(242,112,36,0.05);
     }
-    .journey-card-4:hover {
-        background: rgba(255,255,255,0.08);
-        border-color: var(--accent-purple);
-        transform: translateY(-5px);
-        box-shadow: 0 10px 20px var(--status-info-bg);
-    }
+
+    /* Step circle */
     .journey-step {
-        width: 48px;
-        height: 48px;
+        width: 54px;
+        height: 54px;
         border-radius: 50%;
         display: flex;
         align-items: center;
         justify-content: center;
-        margin: 0 auto 20px auto;
-        font-size: 1.5rem;
-        font-weight: bold;
+        margin: 0 auto 10px auto;
+        font-size: 1.35rem;
+        font-weight: 800;
         color: white;
+        transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
+                    box-shadow 0.35s ease;
     }
-    .step-1 { background: var(--accent-blue); box-shadow: 0 0 15px var(--status-neutral-bg); }
-    .step-2 { background: var(--accent-green); box-shadow: 0 0 15px var(--status-success-bg); }
-    .step-3 { background: var(--accent-orange); box-shadow: 0 0 15px var(--status-warning-bg); }
-    .step-4 { background: var(--accent-purple); box-shadow: 0 0 15px var(--status-info-bg); }
+    .step-1 {
+        background: linear-gradient(135deg, var(--accent-blue), #2563EB);
+        box-shadow: 0 0 20px rgba(59,130,246,0.3), 0 0 40px rgba(59,130,246,0.08);
+    }
+    .step-2 {
+        background: linear-gradient(135deg, var(--accent-green), #5F9020);
+        box-shadow: 0 0 20px rgba(127,177,53,0.3), 0 0 40px rgba(127,177,53,0.08);
+    }
+    .step-3 {
+        background: linear-gradient(135deg, var(--accent-orange), #D95A15);
+        box-shadow: 0 0 20px rgba(242,112,36,0.3), 0 0 40px rgba(242,112,36,0.08);
+    }
+    .journey-card:hover .journey-step {
+        transform: scale(1.12);
+    }
+    .journey-card-1:hover .step-1 {
+        box-shadow: 0 0 24px rgba(59,130,246,0.5), 0 0 48px rgba(59,130,246,0.15);
+    }
+    .journey-card-2:hover .step-2 {
+        box-shadow: 0 0 24px rgba(127,177,53,0.5), 0 0 48px rgba(127,177,53,0.15);
+    }
+    .journey-card-3:hover .step-3 {
+        box-shadow: 0 0 24px rgba(242,112,36,0.5), 0 0 48px rgba(242,112,36,0.15);
+    }
+
+    /* Step label */
+    .journey-label {
+        font-size: 0.6rem;
+        font-weight: 800;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        margin-bottom: 14px;
+        opacity: 0.75;
+    }
+    .label-1 { color: var(--accent-blue); }
+    .label-2 { color: var(--accent-green); }
+    .label-3 { color: var(--accent-orange); }
 
     .journey-title {
         color: white;
-        font-size: 1.2rem;
-        font-weight: bold;
-        margin-bottom: 12px;
+        font-size: 1.15rem;
+        font-weight: 700;
+        margin-bottom: 10px;
+        letter-spacing: -0.3px;
     }
     .journey-desc {
         color: var(--text-secondary);
-        font-size: 0.9rem;
-        line-height: 1.5;
-    }
-
-    /* Grid Layout */
-    .cards-grid {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 20px;
-        margin-bottom: 50px;
+        font-size: 0.85rem;
+        line-height: 1.65;
+        text-wrap: balance;
     }
 
     .two-columns {
