@@ -9,6 +9,7 @@ import pandas as pd
 
 from modules.ui import page_header
 from modules.ui.icons import get_icon
+from modules.ui.components import styled_alert
 from modules.utils.localization import get_text
 from modules.utils.db_config_manager import (
     get_all_rules, update_rule, load_rules_into_session,
@@ -30,15 +31,18 @@ _MUTED      = "rgba(255,255,255,0.32)"  # neutral dim text
 # ==============================================================================
 
 def _tab_header(icon_key: str, title: str, subtitle: str) -> None:
-    """Section header with SVG icon from icons.py + amber left accent."""
+    """Section header with SVG icon from icons.py + amber gradient accent."""
     svg = get_icon(icon_key, size=20, color="#FF9F43")
     sub_html = (
         f"<div style='color:{_MUTED};font-size:0.76rem;margin-top:4px;'>{subtitle}</div>"
         if subtitle else ""
     )
     st.markdown(
-        f"<div style='border-left:3px solid {_AMBER};"
-        f"padding-left:14px;margin-bottom:18px;margin-top:6px;'>"
+        f"<div style='padding:14px 18px;margin-bottom:18px;margin-top:6px;"
+        f"background:linear-gradient(135deg, rgba(255,159,67,0.08) 0%, rgba(255,159,67,0.02) 100%);"
+        f"border:1px solid rgba(255,159,67,0.12);"
+        f"border-left:3px solid {_AMBER};"
+        f"border-radius:0 12px 12px 0;'>"
         f"<div style='display:flex;align-items:center;gap:9px;'>"
         f"{svg}"
         f"<span style='font-size:1.02rem;font-weight:800;color:#FFFFFF;"
@@ -420,15 +424,16 @@ def _render_binning_config(rules: dict, lang: str, v: int) -> None:
                     new_bins   = [float(x.strip()) for x in bins_text.strip().split("\n") if x.strip()]
                     new_labels = [x.strip() for x in labels_text.strip().split("\n") if x.strip()]
                     if len(new_labels) != len(new_bins) - 1:
-                        st.error(
-                            f"❌ Expected {len(new_bins)-1} labels for {len(new_bins)} edges. "
-                            f"Got {len(new_labels)}."
+                        styled_alert(
+                            f"Expected {len(new_bins)-1} labels for {len(new_bins)} edges. "
+                            f"Got {len(new_labels)}.",
+                            "error",
                         )
                     else:
                         cfg[selected] = {"type": "bin", "bins": new_bins, "labels": new_labels}
                         _save_and_refresh("binning_config", cfg, lang)
                 except ValueError as e:
-                    st.error(f"❌ Parse error: {e}")
+                    styled_alert(f"Parse error: {e}", "error")
 
     # ── Categorical Mapping editor ────────────────────────────────────────
     elif rtype == "map":
@@ -530,7 +535,7 @@ def main() -> None:
 
     # ── Access guard ──────────────────────────────────────────────────────
     if st.session_state.get("user_role") != "admin":
-        st.warning(get_text("admin_access_denied", lang))
+        styled_alert(get_text("admin_access_denied", lang), "warning")
         st.stop()
 
     rules = get_all_rules()

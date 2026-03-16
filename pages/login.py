@@ -5,6 +5,7 @@ login.py — Dedicated Login Page
 import base64
 import streamlit as st
 from modules.ui import login_form, footer
+from modules.ui.components import styled_alert
 from modules.utils.localization import get_text
 from modules.core.auth_engine import AuthEngine
 
@@ -82,9 +83,9 @@ def main():
                 st.toast(get_text('login_success', lang), icon="✅")
                 st.rerun()
             else:
-                st.error(get_text('login_failed', lang))
+                styled_alert(get_text('login_failed', lang), "error")
         else:
-            st.error(get_text('login_failed', lang))
+            styled_alert(get_text('login_failed', lang), "error")
 
     footer()
 

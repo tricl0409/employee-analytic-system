@@ -11,7 +11,6 @@ STRINGS = {
         "data_audit": "Data Integrity Audit",
         "preprocessing": "Preprocessing",
         "eda": "Visual Intelligence",
-        "feature_prep": "Feature Preparation",
         "user_management": "User Management",
         "nav_system": "SYSTEM",
         "nav_analytics": "ANALYTICS",
@@ -132,15 +131,13 @@ STRINGS = {
         # ==========================================================================
         # OVERVIEW — FEATURE NAVIGATION
         # ==========================================================================
-        "overview_section_journey": "The 4-Step Analytical Journey",
+        "overview_section_journey": "The 3-Step Analytical Journey",
         "overview_journey_audit_title": "Data Audit",
         "overview_journey_audit_desc": "Evaluating data integrity through comprehensive profiling of anomalies, missing markers, and statistical outliers.",
         "overview_journey_preprocess_title": "Preprocessing",
         "overview_journey_preprocess_desc": "Sanitizing the workforce dataset to resolve technical inconsistencies and mitigate the impact of unknown values.",
         "overview_journey_eda_title": "Visual EDA",
         "overview_journey_eda_desc": 'Discovering socio-economic trends and income distributions through interactive exploratory data analysis.',
-        "overview_journey_feat_title": "Feature Preparation",
-        "overview_journey_feat_desc": "Constructing a model-ready feature space through categorical encoding and numerical standardization.",
         "overview_col_anatomy": "Key Attributes of Dataset",
         "overview_col_objectives": "Analysis Objectives",
         "overview_records_suffix": "RECORDS",
@@ -166,7 +163,7 @@ STRINGS = {
         "overview_obj_grp1_2_title": "Demographic Income Profile",
         "overview_obj_grp1_2_desc": "Which <b>demographic groups</b> have the highest probability of high income?",
         "overview_obj_grp1_3_title": "Education vs Earnings",
-        "overview_obj_grp1_3_desc": "Does <b>education</b> significantly increase earning potential?",
+        "overview_obj_grp1_3_desc": "Why is <b>education</b> considered a key structural driver of high income potential?",
         "overview_obj_grp1_4_title": "Work Intensity & Income",
         "overview_obj_grp1_4_desc": "How does <b>working-hour intensity</b> relate to income levels?",
         "overview_obj_grp1_5_title": "Occupation & Income",
@@ -183,7 +180,7 @@ STRINGS = {
         # DATA AUDIT
         # ==========================================================================
         "scanning": "Scanning dataset integrity...",
-        "health_score": "Data Health Overview",
+        "health_score": "Health Score",
         "integrity_rating": "Integrity Rating",
         "critical_issues": "Critical Issues",
         "missing_cells": "Missing Cells",
@@ -276,7 +273,6 @@ STRINGS = {
         # ==========================================================================
         # PREPROCESSING & FEATURE ENGINEERING
         # ==========================================================================
-        "feature_prep_title": "Feature Preparation",
         "optimization_complete": "Optimization complete!",
         "cleaning_wizard": "Data Cleaning Wizard",
         "step_basic": "1. Basic Cleaning",
@@ -340,7 +336,7 @@ STRINGS = {
         "method_minmax": "Min-Max Normalization",
         "method_minmax_desc": "Scale values to the [0, 1] range",
         "method_noise_drop": "Drop Noise Rows",
-        "method_noise_drop_desc": "Remove entire rows containing garbage/placeholder values",
+        "method_noise_drop_desc": "Remove entire rows containing noise/placeholder values",
         "method_noise_replace_nan": "Replace with NaN",
         "method_noise_replace_nan_desc": "Convert noise values to NaN for later imputation",
         "method_noise_replace_mode": "Replace with Mode",
@@ -502,15 +498,6 @@ STRINGS = {
         "eda_bracket_overtime": "Overtime (>45h)",
         "eda_col_not_found": "Column not found in dataset.",
 
-        # ==========================================================================
-        # FEATURE PREPARATION — section labels
-        # ==========================================================================
-        "feat_categorical_encoding": "Categorical Encoding",
-        "feat_numeric_scaling": "Numeric Scaling",
-        "feat_encode_btn": "Encode Features",
-        "feat_scale_btn": "Scale Features",
-        "feat_no_cat_cols": "No categorical columns remaining. Your data is fully numeric.",
-        "feat_no_num_cols_scale": "No numeric columns available for scaling.",
     }
 }
 
