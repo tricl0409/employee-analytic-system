@@ -115,22 +115,27 @@ def _compute_outlier_preview_row(
     final_mask      = stat_mask & safe_mask
     outlier_count   = int(final_mask.sum())
     raw_stat_count  = int(stat_mask.sum())
+    total_rows      = len(series)
+    pct_outlier     = round(outlier_count / total_rows * 100, 2) if total_rows > 0 else 0.0
 
     # 🛡 badge only when Safe Zone actually filtered out some raw outliers.
     # If raw stat count is already 0, Safe Zone did nothing → no badge.
     safe_zone_active = has_safe_zone and raw_stat_count > 0
     if outlier_count == 0:
-        action = "No Outliers  🛡" if safe_zone_active else "No Outliers"
+        action = "No Outlier Treatment  🛡" if safe_zone_active else "No Outlier Treatment"
     else:
         action = f"{base_action}  🛡" if safe_zone_active else base_action
 
     return {
         "Column":            col,
+        "Min":               round(float(series.min()), 2),
+        "Max":               round(float(series.max()), 2),
         "Skewness":          skew_val,
         "Auto Method":       method_name,
         "detect_key":        detect_key,
         "treatment_method":  treatment_method,
         "Outliers Detected": outlier_count,
+        "% Outlier":         pct_outlier,
         "Action":            action,
         "has_safe_zone":     has_safe_zone,
     }
@@ -290,6 +295,27 @@ def _run_pipeline(
     time.sleep(0.4)
     progress.empty()
 
+    # ── Compute "after" quality metrics from cleaned data (Step 5) ─────
+    after_missing = int(df_cleaned_snapshot.isna().sum().sum())
+    after_dupes   = int(df_cleaned_snapshot.duplicated().sum())
+
+    # Re-compute noise after cleaning
+    _cat_after = df_cleaned_snapshot.select_dtypes(include=["object"]).columns.tolist()
+    after_noise = 0
+    for _col_name in _cat_after:
+        _noise_mask = df_cleaned_snapshot[_col_name].astype(str).str.strip().str.match(
+            r"^[\?\-\.\!\#\*]+$|^(na|n/a|none|null|undefined|unknown|missing|\-)$",
+            case=False, na=False,
+        )
+        after_noise += int(_noise_mask.sum())
+
+    # Re-compute outliers after treatment
+    after_outliers = 0
+    for _col_name in df_cleaned_snapshot.select_dtypes(include=["number"]).columns:
+        _row = _compute_outlier_preview_row(df_cleaned_snapshot, _col_name, safe_zones)
+        if _row is not None:
+            after_outliers += _row["Outliers Detected"]
+
     # ── Update session state ──────────────────────────────────────────────
     # Workspace switches to the _cleaned file (data quality focus)
     st.session_state["active_file"]          = cleaned_filename
@@ -304,12 +330,12 @@ def _run_pipeline(
         "dupes_dropped":     dupes_dropped,
         "df_cleaned_csv":    df_cleaned_csv,
         "df_encoded_csv":    df_encoded_csv,
-        # Comparison table data
+        # Comparison table — all "after" values computed from df_cleaned_snapshot
         "comparison": [
-            ("Missing Values",  initial_missing + noise_cleaned, missing_after_fill),
-            ("Noise Values",    noise_cleaned, 0),
-            ("Duplicate Rows",  initial_dupes, 0),
-            ("Outliers",        total_outliers_before, 0),
+            ("Missing Values",  initial_missing + noise_cleaned, after_missing),
+            ("Noise Values",    noise_cleaned, after_noise),
+            ("Duplicate Rows",  initial_dupes, after_dupes),
+            ("Outliers",        total_outliers_before, after_outliers),
         ],
         # Encoding summary
         "n_label_encoded":     n_label,
@@ -880,13 +906,20 @@ def _render_detail_panel(
 
                 # Action label from the shared preview helper
                 real_row = compute_fn(df, col, safe_zones)
-                action = real_row["Action"] if real_row else "No Outliers"
+                action = real_row["Action"] if real_row else "No Outlier Treatment"
+                col_min = round(float(series.min()), 2) if len(series) > 0 else 0.0
+                col_max = round(float(series.max()), 2) if len(series) > 0 else 0.0
+                total_rows = len(series)
+                pct_outlier = round(raw_count / total_rows * 100, 2) if total_rows > 0 else 0.0
 
                 rows.append({
                     "Column": col,
+                    "Min": col_min,
+                    "Max": col_max,
                     "Skewness": skew_val,
                     "Auto Method": method_name,
                     "Outliers Detected": raw_count,
+                    "% Outlier": pct_outlier,
                     "Action": action,
                 })
 
@@ -906,8 +939,11 @@ def _render_detail_panel(
                         use_container_width=True,
                         hide_index=True,
                         column_config={
+                            "Min": st.column_config.NumberColumn(format="%.2f"),
+                            "Max": st.column_config.NumberColumn(format="%.2f"),
                             "Skewness": st.column_config.NumberColumn(format="%.3f"),
                             "Outliers Detected": st.column_config.NumberColumn(format="%d"),
+                            "% Outlier": st.column_config.NumberColumn(format="%.2f%%"),
                         },
                     )
 
@@ -1264,28 +1300,32 @@ def main():
     # ── Run button (full-width, below both columns) ───────────────────────
     if not done:
         section_divider()
-        _, col_ctr, _ = st.columns([1, 2, 1])
-        with col_ctr:
-            st.markdown(
-                '<div style="text-align:center; margin-bottom:12px;">'
-                '<div style="font-size:0.95rem; font-weight:700;'
-                ' color:rgba(255,255,255,0.7); margin-bottom:4px;">'
-                'Ready to clean your dataset?</div>'
-                '<div style="font-size:0.72rem; color:rgba(255,255,255,0.3);">'
-                'All 8 steps will run sequentially on the active workspace file.</div>'
-                '</div>',
-                unsafe_allow_html=True,
-            )
-            if st.button(
-                "\u26a1 Run Preprocessing Pipeline",
-                type="primary",
-                use_container_width=True,
-                key="btn_run_pipeline",
-            ):
-                rows_original = len(df_work)
-                with st.spinner("Running automated preprocessing pipeline..."):
-                    _run_pipeline(df_work, engine, active_file, rows_original, lang)
-                st.rerun()
+        btn_placeholder = st.empty()
+        with btn_placeholder.container():
+            _, col_ctr, _ = st.columns([1, 2, 1])
+            with col_ctr:
+                st.markdown(
+                    '<div style="text-align:center; margin-bottom:12px;">'
+                    '<div style="font-size:0.95rem; font-weight:700;'
+                    ' color:rgba(255,255,255,0.7); margin-bottom:4px;">'
+                    'Ready to clean your dataset?</div>'
+                    '<div style="font-size:0.72rem; color:rgba(255,255,255,0.3);">'
+                    'All 8 steps will run sequentially on the active workspace file.</div>'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+                clicked = st.button(
+                    "\u26a1 Run Preprocessing Pipeline",
+                    type="primary",
+                    use_container_width=True,
+                    key="btn_run_pipeline",
+                )
+        if clicked:
+            btn_placeholder.empty()
+            rows_original = len(df_work)
+            with st.spinner("Running automated preprocessing pipeline..."):
+                _run_pipeline(df_work, engine, active_file, rows_original, lang)
+            st.rerun()
 
 
 if __name__ == "__main__":

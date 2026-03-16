@@ -26,6 +26,7 @@ STRINGS = {
         "data_audit_title": "Data Integrity Audit",
         "preprocessing_title": "Preprocessing",
         "eda_title": "Visual Intelligence",
+        "eda_subtitle": "Uncovering workforce patterns through interactive exploratory data analysis.",
         "user_management_title": "User Management",
         "user_management_subtitle": "Manage user accounts and permissions.",
 
