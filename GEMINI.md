@@ -198,6 +198,7 @@ for i, v in enumerate(data.values):
 - [ ] **Comments**: Giải thích WHY, không giải thích WHAT
 - [ ] **Naming**: Không viết tắt, biến loop phải có nghĩa (xem mục 4.2)
 - [ ] **Single Source of Truth**: Mỗi logic nghiệp vụ chỉ implement **MỘT LẦN DUY NHẤT**. Nếu nhiều nơi cần cùng kết quả (ví dụ: outlier count hiển ở cả Overview và Inspector), tất cả phải gọi chung 1 hàm core. **KHÔNG BAO GIỞ** viết 2 hàm trùng logic — dù có cùng thuật toán, khác threshold/parameter cũng sẽ gây sai lệch dữ liệu.
+- [ ] **No Hardcoded Data Values**: Mọi metric, count, statistic hiển thị phải được **tính toán từ dữ liệu thực tế**. **KHÔNG BAO GIỜ** hardcode giá trị (ví dụ: `0`, `100`) thay cho kết quả tính toán — kể cả khi "chắc chắn" kết quả sẽ là giá trị đó. Luôn tính lại từ DataFrame/source data thực.
 
 
 ### 4.4. CSS/UI Rules

@@ -3,15 +3,15 @@ eda.py — Employee Data Insight Page (EDA)
 
 Slide 1 Layout (6 chart sections):
   ┌─────────────────┬──────────────────────┬──────────────────────┐
-  │  SECTION 1       │  SECTION 2            │  SECTION 3           │
-  │  Donut: Income   │  Heatmap: Association │  Age × Occ bars      │
-  │  Split           │  Cramér's V + PB      │  + Insight            │
+  │  SECTION 1       │  SECTION 2            │  SECTION 3         │
+  │  Donut: Income   │  Heatmap: Association │  Age × Occ bars    │
+  │  Split           │  Cramér's V + PB      │  + Insight         │
   ├─────────────────┴──────────────────────┴──────────────────────┤
   │  SECTION 4 (3/5):  Top Impacting to High Income               │
-  │  4 sub-charts + dynamic bullet insights                        │
-  │                      │  SECTION 5: Capital │  SECTION 6: Sex     │
-  │                      │  Gain vs Income     │  vs Income Donut    │
-  └──────────────────────┴─────────────────────┴────────────────────┘
+  │  4 sub-charts + dynamic bullet insights                       │
+  │                      │  SECTION 5: Capital │  SECTION 6: Sex  │
+  │                      │  Gain vs Income     │  vs Income Donut │
+  └──────────────────────┴─────────────────────┴──────────────────┘
 """
 
 import streamlit as st

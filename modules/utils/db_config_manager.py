@@ -72,7 +72,8 @@ _DEFAULT_BINNING_CONFIG = {
             "Basic":        ["Preschool", "1st-4th", "5th-6th", "7th-8th", "9th", "10th", "11th", "12th"],
             "HS-grad":      ["HS-grad"],
             "Some/Assoc":   ["Some-college", "Assoc-acdm", "Assoc-voc"],
-            "Advanced":     ["Bachelors", "Masters", "Doctorate", "Prof-school"],
+            "Bachelors":    ["Bachelors"],
+            "Advanced":     ["Masters", "Doctorate", "Prof-school"],
         },
     },
     "Workclass": {
