@@ -1,24 +1,18 @@
 """
 eda.py — Employee Data Insight Page (EDA)
 
-Slide 1 Layout (6 chart sections):
-  ┌─────────────────┬──────────────────────┬──────────────────────┐
-  │  SECTION 1       │  SECTION 2            │  SECTION 3         │
-  │  Donut: Income   │  Heatmap: Association │  Age × Occ bars    │
-  │  Split           │  Cramér's V + PB      │  + Insight         │
-  ├─────────────────┴──────────────────────┴──────────────────────┤
-  │  SECTION 4 (3/5):  Top Impacting to High Income               │
-  │  4 sub-charts + dynamic bullet insights                       │
-  │                      │  SECTION 5: Capital │  SECTION 6: Sex  │
-  │                      │  Gain vs Income     │  vs Income Donut │
-  └──────────────────────┴─────────────────────┴──────────────────┘
+Tab-based analysis dashboard with 5 tabs:
+  1. Income Overview — distribution, association metrics, top features
+  2. Career & Earning Factors — occupation, education, age, working hours
+  3. Investment Income Analysis — capital gain patterns by demographics
+  4. Gender Income Gap — gender-based disparity by occupation & wealth
+  5. High-Income Archetype — composite profile of typical high earners
 """
 
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 from scipy.stats import chi2_contingency
 
 from modules.core import data_engine
@@ -43,7 +37,6 @@ from modules.ui.icons import get_icon
 # ==============================================================================
 
 _C_HIGH = STATUS_COLORS["warning"]["hex"]   # Amber  — high income (>50K)
-_C_STD  = STATUS_COLORS["neutral"]["hex"]   # Blue   — standard income (≤50K)
 
 _STRIP_KEYS = {"legend", "margin"}
 
@@ -54,14 +47,13 @@ _ACCENT_AMBER = "#FF9F43"
 _EDU_COLORS = {
     "Basic":      "rgba(180,160,140,0.55)",     # Warm gray — lowest
     "HS-grad":    "rgba(255,190,120,0.45)",     # Light amber
-    "SomeAssoc":  "rgba(255,159,67,0.55)",      # Mid amber
-    "Some/Assoc": "rgba(255,159,67,0.55)",      # Mid amber (alias)
+    "Some/Assoc": "rgba(255,159,67,0.55)",      # Mid amber
     "Bachelors":  "rgba(255,140,40,0.72)",      # Strong amber
     "Advanced":   "rgba(255,120,20,0.90)",      # Deep amber/orange
 }
 
 # Education sort order (descending: highest level first)
-_EDU_ORDER = ["Advanced", "Bachelors", "Some/Assoc", "SomeAssoc", "HS-grad", "Basic"]
+_EDU_ORDER = ["Advanced", "Bachelors", "Some/Assoc", "HS-grad", "Basic"]
 
 
 def _base_layout() -> dict:
@@ -345,7 +337,7 @@ def _chart_donut(df: pd.DataFrame, income_col: str) -> go.Figure:
         values=[n_std, n_high],
         hole=0.6,
         marker=dict(
-            colors=["rgba(255,255,255,0.08)", _C_HIGH],
+            colors=["rgba(255,255,255,0.12)", _C_HIGH],
             line=dict(color="rgba(0,0,0,0.4)", width=2),
         ),
         textinfo="percent",
@@ -1133,49 +1125,60 @@ def _render_section5(
     high_pct_cg = round((capgain[hi_mask] > 0).sum() / hi_mask.sum() * 100, 1) if hi_mask.sum() else 0
     multiplier = round(high_mean / std_mean, 1) if std_mean > 0 else 0
 
-    fig = go.Figure()
+    col_chart, col_insight = st.columns([3, 2], gap="medium")
 
-    fig.add_trace(go.Bar(
-        x=["≤50K", ">50K"],
-        y=[std_mean, high_mean],
-        name="Avg Capital Gain",
-        marker=dict(color=["rgba(255,159,67,0.35)", "rgba(255,159,67,0.75)"]),
-        text=[f"${std_mean:,.0f}", f"${high_mean:,.0f}"],
-        textposition="outside",
-        textfont=dict(size=11, color=BRIGHT_TEXT),
-        hovertemplate="<b>%{x}</b><br>Avg Capital Gain: <b>$%{y:,.0f}</b><extra></extra>",
-    ))
+    with col_chart:
+        y_max = max(std_mean, high_mean) * 1.35  # headroom for outside text
 
-    fig.update_layout(
-        **_base_layout(),
-        height=300,
-        showlegend=False,
-        margin=dict(l=40, r=20, t=30, b=40),
-        title=dict(
-            text="Average Capital Gain by Income Bracket",
-            font=dict(size=11, color=MUTED_COLOR),
-            x=0.5, xanchor="center",
-        ),
-        xaxis=dict(tickfont=dict(color=MUTED_COLOR, size=11)),
-        yaxis=dict(
-            title=dict(text="Avg Capital Gain ($)", font=dict(color=MUTED_COLOR, size=10)),
-            tickfont=dict(color=MUTED_COLOR, size=9),
-            gridcolor=GRID_COLOR,
-        ),
-    )
-    st.plotly_chart(apply_global_theme(fig), use_container_width=True, key="ch_capgain")
+        fig = go.Figure()
 
-    st.markdown(
-        _insight_box(
-            f"High Income earners generate <b>{multiplier}×</b> more capital gain on average "
-            f"(${high_mean:,.0f} vs ${std_mean:,.0f}). "
-            f"<b>{high_pct_cg}%</b> of High Income individuals have capital gain > 0, "
-            f"compared to only <b>{std_pct_cg}%</b> of standard earners — "
-            f"indicating that non-salary wealth accumulation is strongly concentrated "
-            f"among higher earners."
-        ),
-        unsafe_allow_html=True,
-    )
+        fig.add_trace(go.Bar(
+            x=["Standard Income", "High Income"],
+            y=[std_mean, high_mean],
+            name="Avg Capital Gain",
+            marker=dict(color=["rgba(255,159,67,0.35)", "rgba(255,159,67,0.75)"]),
+            text=[
+                f"${std_mean:,.0f}<br>({std_pct_cg}% have CG)",
+                f"${high_mean:,.0f}<br>({high_pct_cg}% have CG)",
+            ],
+            textposition="outside",
+            textfont=dict(size=10, color=BRIGHT_TEXT),
+            hovertemplate="<b>%{x}</b><br>Avg Capital Gain: <b>$%{y:,.0f}</b><extra></extra>",
+        ))
+
+        fig.update_layout(
+            **_base_layout(),
+            height=320,
+            showlegend=False,
+            margin=dict(l=40, r=20, t=30, b=40),
+            title=dict(
+                text="Average Capital Gain by Income Bracket",
+                font=dict(size=11, color=MUTED_COLOR),
+                x=0.5, xanchor="center",
+            ),
+            xaxis=dict(tickfont=dict(color=MUTED_COLOR, size=11)),
+            yaxis=dict(
+                title=dict(text="Avg Capital Gain ($)", font=dict(color=MUTED_COLOR, size=10)),
+                tickfont=dict(color=MUTED_COLOR, size=9),
+                gridcolor=GRID_COLOR,
+                range=[0, y_max],
+            ),
+        )
+        st.plotly_chart(apply_global_theme(fig), use_container_width=True, key="ch_capgain")
+
+    with col_insight:
+        st.markdown("<div style='margin-top:30px;'></div>", unsafe_allow_html=True)
+        st.markdown(
+            _insight_box(
+                f"High Income earners generate <b>{multiplier}×</b> more capital gain on average "
+                f"(${high_mean:,.0f} vs ${std_mean:,.0f}). "
+                f"<b>{high_pct_cg}%</b> of High Income individuals have capital gain > 0, "
+                f"compared to only <b>{std_pct_cg}%</b> of standard earners — "
+                f"indicating that non-salary wealth accumulation is strongly concentrated "
+                f"among higher earners."
+            ),
+            unsafe_allow_html=True,
+        )
 
 
 # ==============================================================================
@@ -1189,8 +1192,8 @@ def _render_section6(
 ) -> None:
     """Dual donut: Male vs Female income split."""
     _section_header(
-        "Sex vs. Income Level",
-        subtitle="Income distribution split by gender",
+        "Income Distribution by Gender",
+        subtitle="Comparing the proportion of Standard vs High Income earners between male and female populations",
         icon_name="users",
     )
 
@@ -1212,48 +1215,6 @@ def _render_section6(
     female_high = int((hi_mask & female_mask).sum())
     female_std = int((~hi_mask & female_mask).sum())
 
-    fig = make_subplots(
-        rows=1, cols=2,
-        specs=[[{"type": "pie"}, {"type": "pie"}]],
-        subplot_titles=["Male", "Female"],
-    )
-
-    # Male donut
-    fig.add_trace(go.Pie(
-        labels=["≤50K", ">50K"],
-        values=[male_std, male_high],
-        hole=0.55,
-        marker=dict(colors=["rgba(255,255,255,0.08)", _C_HIGH]),
-        textinfo="percent",
-        textfont=dict(size=11, color=BRIGHT_TEXT),
-        hovertemplate="Male<br><b>%{label}</b>: %{value:,}<br>%{percent}<extra></extra>",
-        showlegend=False,
-    ), row=1, col=1)
-
-    # Female donut
-    fig.add_trace(go.Pie(
-        labels=["≤50K", ">50K"],
-        values=[female_std, female_high],
-        hole=0.55,
-        marker=dict(colors=["rgba(255,255,255,0.08)", "rgba(59,130,246,0.7)"]),
-        textinfo="percent",
-        textfont=dict(size=11, color=BRIGHT_TEXT),
-        hovertemplate="Female<br><b>%{label}</b>: %{value:,}<br>%{percent}<extra></extra>",
-        showlegend=False,
-    ), row=1, col=2)
-
-    fig.update_layout(
-        **_base_layout(),
-        height=300,
-        margin=dict(l=20, r=20, t=40, b=20),
-    )
-    # Subtitle font color
-    for ann in fig.layout.annotations:
-        ann.font.color = MUTED_COLOR
-        ann.font.size = 12
-
-    st.plotly_chart(apply_global_theme(fig), use_container_width=True, key="ch_sex_donut")
-
     # Compute percentages for insight
     male_total = male_high + male_std
     female_total = female_high + female_std
@@ -1261,14 +1222,78 @@ def _render_section6(
     female_pct = round(female_high / female_total * 100, 1) if female_total else 0
     gap = round(male_pct - female_pct, 1)
 
-    st.markdown(
-        _insight_box(
-            f"<b>Gender Gap:</b> <b>{male_pct}%</b> of men earn >50K vs <b>{female_pct}%</b> of women "
-            f"— a <b>{gap} percentage point</b> gap. "
-            f"The percentage of men earning >50K is higher than that of women."
-        ),
-        unsafe_allow_html=True,
-    )
+    col_male, col_female, col_insight = st.columns([1, 1, 1], gap="small")
+
+    # --- Male donut ---
+    with col_male:
+        fig_m = go.Figure(go.Pie(
+            labels=["Standard Income", "High Income"],
+            values=[male_std, male_high],
+            hole=0.55,
+            marker=dict(colors=["rgba(255,255,255,0.12)", "rgba(59,130,246,0.75)"]),
+            textinfo="label+percent",
+            textfont=dict(size=10, color=BRIGHT_TEXT),
+            textposition="outside",
+            pull=[0, 0.05],
+            hovertemplate="Male<br><b>%{label}</b>: %{value:,}<br>%{percent}<extra></extra>",
+            showlegend=False,
+        ))
+        fig_m.update_layout(
+            **_base_layout(),
+            height=300,
+            margin=dict(l=30, r=30, t=30, b=10),
+            title=dict(text="Male", font=dict(size=12, color=MUTED_COLOR),
+                       x=0.5, xanchor="center"),
+            annotations=[dict(
+                text=f"<b>{male_total:,}</b><br><span style='font-size:10px;color:rgba(59,130,246,0.85)'>"
+                     f"{male_high:,} High</span>",
+                x=0.5, y=0.5, font=dict(size=14, color=BRIGHT_TEXT),
+                showarrow=False,
+            )],
+        )
+        st.plotly_chart(apply_global_theme(fig_m), use_container_width=True, key="ch_sex_m")
+
+    # --- Female donut ---
+    with col_female:
+        fig_f = go.Figure(go.Pie(
+            labels=["Standard Income", "High Income"],
+            values=[female_std, female_high],
+            hole=0.55,
+            marker=dict(colors=["rgba(255,255,255,0.12)", "rgba(236,72,153,0.75)"]),
+            textinfo="label+percent",
+            textfont=dict(size=10, color=BRIGHT_TEXT),
+            textposition="outside",
+            pull=[0, 0.05],
+            hovertemplate="Female<br><b>%{label}</b>: %{value:,}<br>%{percent}<extra></extra>",
+            showlegend=False,
+        ))
+        fig_f.update_layout(
+            **_base_layout(),
+            height=300,
+            margin=dict(l=30, r=30, t=30, b=10),
+            title=dict(text="Female", font=dict(size=12, color=MUTED_COLOR),
+                       x=0.5, xanchor="center"),
+            annotations=[dict(
+                text=f"<b>{female_total:,}</b><br><span style='font-size:10px;color:rgba(236,72,153,0.85)'>"
+                     f"{female_high:,} High</span>",
+                x=0.5, y=0.5, font=dict(size=14, color=BRIGHT_TEXT),
+                showarrow=False,
+            )],
+        )
+        st.plotly_chart(apply_global_theme(fig_f), use_container_width=True, key="ch_sex_f")
+
+    # --- Insight ---
+    with col_insight:
+        st.markdown("<div style='margin-top:20px;'></div>", unsafe_allow_html=True)
+        st.markdown(
+            _insight_box(
+                f"<b>{male_pct}%</b> of men achieve High Income compared to "
+                f"only <b>{female_pct}%</b> of women — a <b>{gap} pp</b> gap. "
+                f"This disparity suggests systemic factors (occupational segregation, "
+                f"seniority distribution) may limit women's access to higher earning brackets."
+            ),
+            unsafe_allow_html=True,
+        )
 
 
 # ==============================================================================
@@ -1418,6 +1443,15 @@ def _render_section8(
         ct_total = pd.crosstab(sub_edu, sub_occ)
         ct_cg = pd.crosstab(sub_edu, sub_occ, values=sub_cg, aggfunc="sum")
         pct = (ct_cg / ct_total.replace(0, np.nan) * 100).fillna(0).round(1)
+
+        # Sort Y-axis (Education) by _EDU_ORDER
+        edu_sorted = [e for e in _EDU_ORDER if e in pct.index]
+        edu_remaining = [e for e in pct.index if e not in edu_sorted]
+        pct = pct.reindex(edu_sorted + edu_remaining)
+
+        # Sort X-axis (Occupation) by overall CapGain prevalence descending
+        occ_order = pct.mean(axis=0).sort_values(ascending=False).index.tolist()
+        pct = pct[occ_order]
 
         # Track peak cell in >50K group
         if idx == 1 and pct.values.max().max() > 0:
@@ -1755,19 +1789,20 @@ def _render_section10(
 
 def _render_section11(
     df: pd.DataFrame,
+    df_binned: pd.DataFrame,
     cols: dict[str, str | None],
     income_col: str,
 ) -> None:
-    """Grouped horizontal bar: % >50K by Occupation, colored by Sex."""
+    """Grouped horizontal bar: High Income rate by Occupation, colored by Sex."""
     _section_header(
-        "Employees Earned High Income by Sex and Occupation",
-        subtitle="Gender gap analysis across occupation categories",
+        "High Income Rate by Gender × Occupation",
+        subtitle="Occupation-level decomposition of the gender income gap — identifying where disparity is largest and smallest",
         icon_name="users",
     )
 
     occ_col = cols.get("occupation")
     sex_col = cols.get("sex")
-    if not occ_col or occ_col not in df.columns:
+    if not occ_col or occ_col not in df_binned.columns:
         styled_alert("No occupation column found.", "info")
         return
     if not sex_col or sex_col not in df.columns:
@@ -1775,7 +1810,7 @@ def _render_section11(
         return
 
     hi_mask = _high_mask(df[income_col])
-    occ = df[occ_col].astype(str)
+    occ = df_binned[occ_col].astype(str)
     sex = df[sex_col].astype(str).str.strip().str.lower()
 
     rate_male = hi_mask[sex == "male"].groupby(occ[sex == "male"]).mean()
@@ -1796,39 +1831,39 @@ def _render_section11(
         x=(rate_male.values * 100).round(1),
         name="Male",
         orientation="h",
-        marker=dict(color="rgba(59,130,246,0.7)"),
+        marker=dict(color="rgba(59,130,246,0.75)"),
         text=[f"{v:.1f}%" for v in rate_male.values * 100],
         textposition="outside",
         textfont=dict(size=9, color=MUTED_COLOR),
         cliponaxis=False,
-        hovertemplate="<b>%{y}</b> (Male)<br>%{x:.1f}% earn >50K<extra></extra>",
+        hovertemplate="<b>%{y}</b> (Male)<br>%{x:.1f}% High Income<extra></extra>",
     ))
     fig.add_trace(go.Bar(
         y=rate_female.index.tolist(),
         x=(rate_female.values * 100).round(1),
         name="Female",
         orientation="h",
-        marker=dict(color="rgba(236,72,153,0.7)"),
+        marker=dict(color="rgba(236,72,153,0.75)"),
         text=[f"{v:.1f}%" for v in rate_female.values * 100],
         textposition="outside",
         textfont=dict(size=9, color=MUTED_COLOR),
         cliponaxis=False,
-        hovertemplate="<b>%{y}</b> (Female)<br>%{x:.1f}% earn >50K<extra></extra>",
+        hovertemplate="<b>%{y}</b> (Female)<br>%{x:.1f}% High Income<extra></extra>",
     ))
 
     fig.update_layout(
         **_base_layout(),
-        height=520,
+        height=max(360, len(all_occs) * 50),
         barmode="group",
         bargap=0.25,
         bargroupgap=0.08,
         margin=dict(l=150, r=70, t=20, b=70),
         legend=dict(
-            orientation="h", y=-0.12, x=0.5, xanchor="center",
+            orientation="h", y=-0.15, x=0.5, xanchor="center",
             font=dict(size=10, color=MUTED_COLOR),
         ),
         xaxis=dict(
-            title=dict(text="% Earning >50K", font=dict(color=MUTED_COLOR, size=10)),
+            title=dict(text="High Income Rate (%)", font=dict(color=MUTED_COLOR, size=10)),
             tickfont=dict(color=MUTED_COLOR, size=9),
             gridcolor=GRID_COLOR,
         ),
@@ -1840,12 +1875,20 @@ def _render_section11(
     avg_male = rate_male.mean() * 100
     avg_female = rate_female.mean() * 100
     gap = round(avg_male - avg_female, 1)
+    # Identify occupation with largest & smallest gap
+    occ_gap = (rate_male - rate_female) * 100
+    max_gap_occ = occ_gap.idxmax()
+    max_gap_val = round(occ_gap.max(), 1)
+    min_gap_occ = occ_gap.idxmin()
+    min_gap_val = round(occ_gap.min(), 1)
     st.markdown(
         _insight_box(
-            f"<b>Gender Gap:</b> The chart shows that the percentage of men earning >50K "
-            f"(<b>{avg_male:.1f}%</b> avg) is higher than that of women "
-            f"(<b>{avg_female:.1f}%</b> avg) — a <b>{gap:.1f} pp</b> gap — "
-            f"across virtually all occupation categories."
+            f"The average High Income rate is <b>{avg_male:.1f}%</b> for men vs "
+            f"<b>{avg_female:.1f}%</b> for women — a <b>{gap:.1f} pp</b> overall gap. "
+            f"The widest disparity is in <b>{max_gap_occ}</b> ({max_gap_val} pp), "
+            f"while <b>{min_gap_occ}</b> shows the narrowest gap ({min_gap_val} pp). "
+            f"This occupation-level view reveals that gender inequality is not uniform but "
+            f"varies significantly by career category."
         ),
         unsafe_allow_html=True,
     )
@@ -1856,16 +1899,16 @@ def _render_section11(
 # ==============================================================================
 
 _SEGMENT_COLORS = {
-    "≤50K & No CapGain": "rgba(100,116,139,0.60)",   # Slate — baseline
-    "≤50K & Has CapGain": "rgba(56,189,248,0.70)",   # Cyan — CapGain lift
-    ">50K & No CapGain": "rgba(251,146,60,0.75)",    # Orange — high income
-    ">50K & Has CapGain": "rgba(250,204,21,0.90)",   # Gold — best segment
+    "High & Has CapGain": "rgba(250,175,30,0.90)",    # Gold — best segment
+    "High & No CapGain": "rgba(255,140,40,0.72)",     # Strong amber
+    "Std & Has CapGain": "rgba(255,190,120,0.50)",    # Light amber
+    "Std & No CapGain": "rgba(140,150,165,0.45)",     # Muted slate — baseline
 }
 
 
 def _income_capgain_stacked(
     df: pd.DataFrame,
-    group_col: str,
+    group_series: pd.Series,
     income_col: str,
     capgain_col: str,
     chart_key: str,
@@ -1878,12 +1921,12 @@ def _income_capgain_stacked(
 
     # Create segment column
     segs = pd.Series("", index=df.index)
-    segs[(~hi_mask) & (~has_cg)] = "≤50K & No CapGain"
-    segs[(~hi_mask) & (has_cg)]  = "≤50K & Has CapGain"
-    segs[(hi_mask) & (~has_cg)]  = ">50K & No CapGain"
-    segs[(hi_mask) & (has_cg)]   = ">50K & Has CapGain"
+    segs[(~hi_mask) & (~has_cg)] = "Std & No CapGain"
+    segs[(~hi_mask) & (has_cg)]  = "Std & Has CapGain"
+    segs[(hi_mask) & (~has_cg)]  = "High & No CapGain"
+    segs[(hi_mask) & (has_cg)]   = "High & Has CapGain"
 
-    group = df[group_col].astype(str)
+    group = group_series.astype(str)
     ct = pd.crosstab(group, segs, normalize="index") * 100
 
     # Ensure all 4 segments exist
@@ -1892,11 +1935,11 @@ def _income_capgain_stacked(
             ct[seg_name] = 0.0
 
     # Sort by >50K total descending
-    ct["_sort"] = ct.get(">50K & No CapGain", 0) + ct.get(">50K & Has CapGain", 0)
+    ct["_sort"] = ct.get("High & No CapGain", 0) + ct.get("High & Has CapGain", 0)
     ct = ct.sort_values("_sort", ascending=True).drop(columns=["_sort"])
 
     fig = go.Figure()
-    segment_order = ["≤50K & No CapGain", "≤50K & Has CapGain", ">50K & No CapGain", ">50K & Has CapGain"]
+    segment_order = ["High & Has CapGain", "High & No CapGain", "Std & Has CapGain", "Std & No CapGain"]
     for seg_name in segment_order:
         if seg_name not in ct.columns:
             continue
@@ -1939,6 +1982,7 @@ def _income_capgain_stacked(
 
 def _render_section12(
     df: pd.DataFrame,
+    df_binned: pd.DataFrame,
     cols: dict[str, str | None],
     income_col: str,
 ) -> None:
@@ -1951,14 +1995,15 @@ def _render_section12(
 
     marital_col = cols.get("marital")
     capgain_col = cols.get("capital_gain")
-    if not marital_col or marital_col not in df.columns:
+    if not marital_col or marital_col not in df_binned.columns:
         styled_alert("No marital_status column found.", "info")
         return
     if not capgain_col or capgain_col not in df.columns:
         styled_alert("No capital_gain column found.", "info")
         return
 
-    fig = _income_capgain_stacked(df, marital_col, income_col, capgain_col,
+    group_series = df_binned[marital_col]
+    fig = _income_capgain_stacked(df, group_series, income_col, capgain_col,
                                    "ch_cg_marital", "By Marital Status (100% Stacked)")
     st.plotly_chart(fig, use_container_width=True, key="ch_cg_marital")
 
@@ -1967,7 +2012,7 @@ def _render_section12(
     capgain = pd.to_numeric(df[capgain_col], errors="coerce")
     has_cg = capgain > 0
     dual_earner = hi_mask & has_cg
-    rate_by_marital = dual_earner.groupby(df[marital_col].astype(str)).mean() * 100
+    rate_by_marital = dual_earner.groupby(group_series.astype(str)).mean() * 100
     if not rate_by_marital.empty:
         top_group = rate_by_marital.idxmax()
         top_val = round(rate_by_marital.max(), 1)
@@ -1991,6 +2036,7 @@ def _render_section12(
 
 def _render_section13(
     df: pd.DataFrame,
+    df_binned: pd.DataFrame,
     cols: dict[str, str | None],
     income_col: str,
 ) -> None:
@@ -2003,14 +2049,15 @@ def _render_section13(
 
     occ_col = cols.get("occupation")
     capgain_col = cols.get("capital_gain")
-    if not occ_col or occ_col not in df.columns:
+    if not occ_col or occ_col not in df_binned.columns:
         styled_alert("No occupation column found.", "info")
         return
     if not capgain_col or capgain_col not in df.columns:
         styled_alert("No capital_gain column found.", "info")
         return
 
-    fig = _income_capgain_stacked(df, occ_col, income_col, capgain_col,
+    group_series = df_binned[occ_col]
+    fig = _income_capgain_stacked(df, group_series, income_col, capgain_col,
                                    "ch_cg_occ", "By Occupation (100% Stacked)")
     st.plotly_chart(fig, use_container_width=True, key="ch_cg_occ")
 
@@ -2019,7 +2066,7 @@ def _render_section13(
     capgain = pd.to_numeric(df[capgain_col], errors="coerce")
     has_cg = capgain > 0
     dual_earner = hi_mask & has_cg
-    rate_by_occ = dual_earner.groupby(df[occ_col].astype(str)).mean() * 100
+    rate_by_occ = dual_earner.groupby(group_series.astype(str)).mean() * 100
     if not rate_by_occ.empty:
         top_occ = rate_by_occ.idxmax()
         top_val = round(rate_by_occ.max(), 1)
@@ -2044,49 +2091,62 @@ def _render_section13(
 
 def _render_section14(
     df: pd.DataFrame,
+    df_binned: pd.DataFrame,
     cols: dict[str, str | None],
     income_col: str,
 ) -> None:
-    """2 stacked bar charts side-by-side: Male vs Female, grouped by Occupation."""
+    """Side-by-side stacked bar charts: Male vs Female, grouped by Occupation."""
     _section_header(
-        "Income & Capital Gain by Sex",
-        subtitle="Male vs Female breakdown of income and capital gain by occupation",
+        "Income × Capital Gain Segmentation by Gender",
+        subtitle="4-segment composition (High/Std × Has/No CapGain) for each gender, broken down by occupation",
         icon_name="users",
     )
 
     occ_col = cols.get("occupation")
     sex_col = cols.get("sex")
     capgain_col = cols.get("capital_gain")
-    if not all(c and c in df.columns for c in [occ_col, sex_col, capgain_col]):
-        styled_alert("Requires occupation, sex, and capital_gain columns.", "info")
+    if not all(c and c in df.columns for c in [sex_col, capgain_col]):
+        styled_alert("Requires sex and capital_gain columns.", "info")
+        return
+    if not occ_col or occ_col not in df_binned.columns:
+        styled_alert("No occupation column found.", "info")
         return
 
     sex_series = df[sex_col].astype(str).str.strip().str.lower()
+    occ_binned = df_binned[occ_col]
+
+    col_left, col_right = st.columns(2, gap="medium")
 
     for idx, (gender, label) in enumerate([("male", "Male"), ("female", "Female")]):
         sub = df[sex_series == gender]
+        sub_occ = occ_binned[sex_series == gender]
         if sub.empty:
             styled_alert(f"No {label} data found.", "info")
             continue
         fig = _income_capgain_stacked(
-            sub, occ_col, income_col, capgain_col,
+            sub, sub_occ, income_col, capgain_col,
             f"ch_cg_sex_{gender}",
             f"{label} — Income & CapGain by Occupation",
         )
-        st.plotly_chart(fig, use_container_width=True, key=f"ch_cg_sex_{gender}")
-
-        if idx == 0:
-            _row_spacer()
+        target_col = col_left if idx == 0 else col_right
+        with target_col:
+            st.plotly_chart(fig, use_container_width=True, key=f"ch_cg_sex_{gender}")
 
     # Insight
     hi_mask = _high_mask(df[income_col])
     male_hi_pct = round(hi_mask[sex_series == "male"].mean() * 100, 1) if (sex_series == "male").any() else 0
     female_hi_pct = round(hi_mask[sex_series == "female"].mean() * 100, 1) if (sex_series == "female").any() else 0
+    capgain = pd.to_numeric(df[capgain_col], errors="coerce")
+    has_cg = capgain > 0
+    dual_m = round((hi_mask & has_cg & (sex_series == "male")).sum() / (sex_series == "male").sum() * 100, 1) if (sex_series == "male").any() else 0
+    dual_f = round((hi_mask & has_cg & (sex_series == "female")).sum() / (sex_series == "female").sum() * 100, 1) if (sex_series == "female").any() else 0
     st.markdown(
         _insight_box(
-            f"<b>Gender Gap:</b> <b>{male_hi_pct}%</b> of men earn >50K vs <b>{female_hi_pct}%</b> "
-            f"of women. Men in <b>Management/Professional</b> have the highest rate of earning "
-            f">50K with capital gain."
+            f"<b>{male_hi_pct}%</b> of men vs <b>{female_hi_pct}%</b> of women reach High Income "
+            f"(a <b>{round(male_hi_pct - female_hi_pct, 1)} pp</b> gap). "
+            f"When factoring in capital gain, <b>{dual_m}%</b> of men qualify as dual earners "
+            f"(High Income + CapGain) compared to only <b>{dual_f}%</b> of women — "
+            f"indicating that the gender wealth gap widens further when non-salary income is considered."
         ),
         unsafe_allow_html=True,
     )
@@ -2102,10 +2162,10 @@ def _render_section15(
     cols: dict[str, str | None],
     income_col: str,
 ) -> None:
-    """Typical High-Income Profile: summary bullets + filtered stacked bar."""
+    """High-Income Archetype: enhanced profile bullets + education stacked bar."""
     _section_header(
-        "Typical High-Income Profile",
-        subtitle="Characteristics of the typical >50K individual with capital gain",
+        "High-Income Archetype Profile",
+        subtitle="Composite demographic, career, and investment traits of typical high earners — synthesized from all preceding analysis",
         icon_name="zap",
     )
 
@@ -2114,41 +2174,73 @@ def _render_section15(
     sex_col = cols.get("sex")
     marital_col = cols.get("marital")
     capgain_col = cols.get("capital_gain")
+    age_col = cols.get("age")
+    hours_col = cols.get("hours")
 
     hi_mask = _high_mask(df[income_col])
     hi_df = df[hi_mask].copy()
+    hi_binned = df_binned[hi_mask]
+    high_count = len(hi_df)
 
-    # Build profile bullets from data
-    bullets = []
+    if high_count == 0:
+        styled_alert("No High Income records found.", "info")
+        return
 
-    # Most common sex
+    # Build profile bullets from data — using binned where available
+    bullets: list[str] = []
+    # Defaults for insight archetype (overwritten below if columns exist)
+    top_sex, top_m, top_occ = "N/A", "N/A", "N/A"
+
+    # Most common sex + percentage
     if sex_col and sex_col in hi_df.columns:
-        top_sex = hi_df[sex_col].astype(str).str.strip().mode()
-        if not top_sex.empty:
-            bullets.append(f"<b>{top_sex.iloc[0]}</b>")
+        sex_vc = hi_df[sex_col].astype(str).str.strip().value_counts()
+        if not sex_vc.empty:
+            top_sex = sex_vc.index[0]
+            top_sex_pct = round(sex_vc.iloc[0] / high_count * 100, 1)
+            bullets.append(f"<b>{top_sex}</b> — {top_sex_pct}% of high earners")
 
-    # Most common marital status
-    if marital_col and marital_col in hi_df.columns:
-        top_marital = hi_df[marital_col].astype(str).str.strip().mode()
-        if not top_marital.empty:
-            bullets.append(f"<b>{top_marital.iloc[0]}</b>")
+    # Median age
+    if age_col and age_col in hi_df.columns:
+        ages = pd.to_numeric(hi_df[age_col], errors="coerce").dropna()
+        if not ages.empty:
+            median_age = int(ages.median())
+            bullets.append(f"Median age: <b>{median_age}</b>")
+
+    # Most common marital status (binned)
+    if marital_col and marital_col in hi_binned.columns:
+        marital_vc = hi_binned[marital_col].astype(str).value_counts()
+        if not marital_vc.empty:
+            top_m = marital_vc.index[0]
+            top_m_pct = round(marital_vc.iloc[0] / high_count * 100, 1)
+            bullets.append(f"<b>{top_m}</b> — {top_m_pct}%")
 
     # Most common education (binned)
-    if edu_col and edu_col in df_binned.columns:
-        hi_edu = df_binned.loc[hi_mask, edu_col].astype(str).mode()
-        if not hi_edu.empty:
-            bullets.append(f"<b>{hi_edu.iloc[0]}</b> or higher education")
+    if edu_col and edu_col in hi_binned.columns:
+        edu_vc = hi_binned[edu_col].astype(str).value_counts()
+        if not edu_vc.empty:
+            top_edu = edu_vc.index[0]
+            top_edu_pct = round(edu_vc.iloc[0] / high_count * 100, 1)
+            bullets.append(f"<b>{top_edu}</b> education — {top_edu_pct}%")
 
-    # Most common occupation
-    if occ_col and occ_col in hi_df.columns:
-        top_occ = hi_df[occ_col].astype(str).str.strip().mode()
-        if not top_occ.empty:
-            bullets.append(f"Often holding <b>{top_occ.iloc[0]}</b> positions")
+    # Most common occupation (binned)
+    if occ_col and occ_col in hi_binned.columns:
+        occ_vc = hi_binned[occ_col].astype(str).value_counts()
+        if not occ_vc.empty:
+            top_occ = occ_vc.index[0]
+            top_occ_pct = round(occ_vc.iloc[0] / high_count * 100, 1)
+            bullets.append(f"<b>{top_occ}</b> occupation — {top_occ_pct}%")
+
+    # Average hours/week
+    if hours_col and hours_col in hi_df.columns:
+        hrs = pd.to_numeric(hi_df[hours_col], errors="coerce").dropna()
+        if not hrs.empty:
+            avg_hrs = round(hrs.mean(), 1)
+            bullets.append(f"Avg <b>{avg_hrs}</b> hrs/week")
 
     # Capital gain
     if capgain_col and capgain_col in hi_df.columns:
         cg = pd.to_numeric(hi_df[capgain_col], errors="coerce")
-        pct_cg = round((cg > 0).sum() / len(hi_df) * 100, 1) if len(hi_df) else 0
+        pct_cg = round((cg > 0).sum() / high_count * 100, 1) if high_count else 0
         if pct_cg > 0:
             bullets.append(f"<b>{pct_cg}%</b> have investment income (Capital Gain)")
 
@@ -2186,62 +2278,84 @@ def _render_section15(
 
     _row_spacer()
 
-    # Filtered stacked bar — full-width
-    if occ_col and edu_col and sex_col and capgain_col:
-        sex_lower = df[sex_col].astype(str).str.strip().str.lower()
-        cg = pd.to_numeric(df[capgain_col], errors="coerce")
-        filter_mask = hi_mask & (sex_lower == "male") & (cg > 0)
-        filtered_df = df_binned[filter_mask]
+    # Stacked bar — ALL High Income earners (both genders)
+    if occ_col and edu_col and occ_col in hi_binned.columns and edu_col in hi_binned.columns:
+        ct = pd.crosstab(
+            hi_binned[occ_col].astype(str),
+            hi_binned[edu_col].astype(str),
+            normalize="index",
+        ) * 100
 
-        if not filtered_df.empty and occ_col in filtered_df.columns and edu_col in filtered_df.columns:
-            ct = pd.crosstab(
-                filtered_df[occ_col].astype(str),
-                filtered_df[edu_col].astype(str),
-                normalize="index",
-            ) * 100
+        # Sort occupations by Advanced+Bachelors % descending
+        top_edu_cols = [e for e in _EDU_ORDER[:2] if e in ct.columns]
+        if top_edu_cols:
+            ct["_sort"] = ct[top_edu_cols].sum(axis=1)
+        else:
+            ct["_sort"] = 0
+        ct = ct.sort_values("_sort", ascending=True).drop(columns=["_sort"])
 
-            fig = go.Figure()
-            for edu_group in ct.columns:
-                color = _EDU_COLORS.get(edu_group, "rgba(148,163,184,0.5)")
-                vals = ct[edu_group].round(1).values
-                fig.add_trace(go.Bar(
-                    y=ct.index.tolist(),
-                    x=vals,
-                    name=edu_group,
-                    orientation="h",
-                    marker=dict(color=color),
-                    text=[f"{v:.0f}%" if v >= 5 else "" for v in vals],
-                    textposition="inside",
-                    textfont=dict(size=9, color=BRIGHT_TEXT),
-                    hovertemplate=(
-                        f"<b>%{{y}}</b><br>{edu_group}: <b>%{{x:.1f}}%</b><extra></extra>"
-                    ),
-                ))
+        # Order education columns by _EDU_ORDER
+        sorted_edu_cols = [e for e in _EDU_ORDER if e in ct.columns]
+        remaining_cols = [c for c in ct.columns if c not in sorted_edu_cols]
+        ct = ct[sorted_edu_cols + remaining_cols]
 
-            fig.update_layout(
-                **_base_layout(),
-                height=350,
-                barmode="stack",
-                margin=dict(l=150, r=30, t=30, b=70),
-                title=dict(
-                    text="Education within Occ. (Male, >50K, CapGain>0)",
-                    font=dict(size=11, color=MUTED_COLOR),
-                    x=0.5, xanchor="center",
+        fig = go.Figure()
+        for edu_group in ct.columns:
+            color = _EDU_COLORS.get(edu_group, "rgba(148,163,184,0.5)")
+            vals = ct[edu_group].round(1).values
+            fig.add_trace(go.Bar(
+                y=ct.index.tolist(),
+                x=vals,
+                name=edu_group,
+                orientation="h",
+                marker=dict(color=color),
+                text=[f"{v:.0f}%" if v >= 5 else "" for v in vals],
+                textposition="inside",
+                textfont=dict(size=9, color=BRIGHT_TEXT),
+                hovertemplate=(
+                    f"<b>%{{y}}</b><br>{edu_group}: <b>%{{x:.1f}}%</b><extra></extra>"
                 ),
-                legend=dict(
-                    orientation="h", y=-0.20, x=0.5, xanchor="center",
-                    font=dict(size=10, color=MUTED_COLOR),
-                ),
-                xaxis=dict(
-                    range=[0, 100],
-                    tickfont=dict(color=MUTED_COLOR, size=9),
-                    title=dict(text="% within Occupation", font=dict(color=MUTED_COLOR, size=10)),
-                ),
-                yaxis=dict(tickfont=dict(color=MUTED_COLOR, size=10)),
-            )
-            st.plotly_chart(
-                apply_global_theme(fig), use_container_width=True, key="ch_profile_stacked",
-            )
+            ))
+
+        fig.update_layout(
+            **_base_layout(),
+            height=max(320, len(ct) * 40),
+            barmode="stack",
+            margin=dict(l=150, r=30, t=30, b=70),
+            title=dict(
+                text="Education Composition within Occupation (High Income Earners)",
+                font=dict(size=11, color=MUTED_COLOR),
+                x=0.5, xanchor="center",
+            ),
+            legend=dict(
+                orientation="h", y=-0.20, x=0.5, xanchor="center",
+                font=dict(size=10, color=MUTED_COLOR),
+            ),
+            xaxis=dict(
+                range=[0, 100],
+                tickfont=dict(color=MUTED_COLOR, size=9),
+                title=dict(text="% within Occupation", font=dict(color=MUTED_COLOR, size=10)),
+            ),
+            yaxis=dict(tickfont=dict(color=MUTED_COLOR, size=10)),
+        )
+        st.plotly_chart(
+            apply_global_theme(fig), use_container_width=True, key="ch_profile_stacked",
+        )
+
+        # Concluding insight
+        top_occ_name = ct.index[-1]  # Last row = highest Advanced+Bachelors %
+        top_occ_adv = round(ct.loc[top_occ_name, top_edu_cols].sum(), 1) if top_edu_cols else 0
+        st.markdown(
+            _insight_box(
+                f"Among High Income earners, <b>{top_occ_name}</b> has the highest concentration "
+                f"of advanced education (<b>{top_occ_adv}%</b> Bachelors+). "
+                f"The typical high earner archetype is a <b>{top_sex}</b>, "
+                f"<b>{top_m}</b>, "
+                f"working in <b>{top_occ}</b> roles "
+                f"— this composite profile represents the dominant wealth-building pathway in the dataset."
+            ),
+            unsafe_allow_html=True,
+        )
 
 
 # ==============================================================================
@@ -2298,8 +2412,8 @@ def main() -> None:
         ":material/monitoring: Income Overview",
         ":material/work: Career & Earning Factors",
         ":material/attach_money: Investment Income Analysis",
-        ":material/wc: Gender Disparity",
-        ":material/target: Archetype Profile",
+        ":material/wc: Gender Income Gap",
+        ":material/target: High-Income Archetype",
     ]
     tabs = st.tabs(tab_labels)
 
@@ -2403,12 +2517,12 @@ def main() -> None:
         _row_spacer()
 
         # CapGain by Marital Status (full-width)
-        _render_section12(df_raw, cols, income_col)
+        _render_section12(df_raw, df_binned, cols, income_col)
 
         _row_spacer()
 
         # CapGain by Occupation (full-width)
-        _render_section13(df_raw, cols, income_col)
+        _render_section13(df_raw, df_binned, cols, income_col)
 
     # =================================================================
     # TAB 4 — Gender Disparity
@@ -2416,11 +2530,11 @@ def main() -> None:
     with tabs[3]:
         _tab_summary(
             "<b style='color:rgba(255,255,255,0.6);'>ℹ What this tab reveals</b><br>"
-            "A multi-dimensional analysis of <b style='color:#F59E0B;'>gender-based income disparity</b>. "
-            "Compares male vs. female earning patterns at the overall level, "
-            "within individual <b style='color:#F59E0B;'>occupations</b>, and through the lens of "
-            "<b style='color:#F59E0B;'>capital gain</b> — quantifying where gender gaps "
-            "are widest and where they narrow."
+            "Quantifies <b style='color:#F59E0B;'>gender-based income inequality</b> across three dimensions: "
+            "(1) <b style='color:#F59E0B;'>overall income split</b> between male and female populations, "
+            "(2) <b style='color:#F59E0B;'>occupation-level disparity</b> showing where the gap is widest, "
+            "and (3) <b style='color:#F59E0B;'>capital gain segmentation</b> revealing whether non-salary "
+            "wealth compounds or narrows the gender divide."
         )
 
         # Sex vs Income Level (dual donut)
@@ -2429,12 +2543,12 @@ def main() -> None:
         _row_spacer()
 
         # Sex × Occupation (grouped bar)
-        _render_section11(df_raw, cols, income_col)
+        _render_section11(df_raw, df_binned, cols, income_col)
 
         _row_spacer()
 
-        # Income & CapGain by Sex (2 stacked bars Male/Female)
-        _render_section14(df_raw, cols, income_col)
+        # Income & CapGain by Sex (side-by-side stacked bars)
+        _render_section14(df_raw, df_binned, cols, income_col)
 
     # =================================================================
     # TAB 5 — Archetype Profile
@@ -2442,10 +2556,11 @@ def main() -> None:
     with tabs[4]:
         _tab_summary(
             "<b style='color:rgba(255,255,255,0.6);'>ℹ What this tab reveals</b><br>"
-            "The <b style='color:#F59E0B;'>composite profile</b> of a typical high-income individual "
-            "with capital gain — synthesizing insights from all previous tabs into a single "
-            "<b style='color:#F59E0B;'>actionable archetype</b>. Use this as the concluding "
-            "reference for demographic targeting and policy recommendations."
+            "Synthesizes findings from all prior tabs into a single <b style='color:#F59E0B;'>composite archetype</b> "
+            "of the typical high earner. Covers <b style='color:#F59E0B;'>demographics</b> (gender, age, marital status), "
+            "<b style='color:#F59E0B;'>career profile</b> (education, occupation, hours worked), "
+            "and <b style='color:#F59E0B;'>investment behavior</b> (capital gain prevalence) — "
+            "providing an actionable reference for targeting and policy design."
         )
 
         # Typical High-Income Profile (summary + chart)
