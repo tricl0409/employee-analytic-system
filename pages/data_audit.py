@@ -7,12 +7,11 @@ Enterprise Dashboard with neon-themed charts and animated UI.
 import streamlit as st
 import pandas as pd
 from modules.core import data_engine, audit_engine
-from modules.ui import page_header, workspace_status, metric_card, active_file_scan_progress_bar, section_divider
+from modules.ui import page_header, workspace_status, active_file_scan_progress_bar, section_divider
 from modules.ui.components import UiComponents
 from modules.ui.visualizer import plot_issue_composition, plot_category_frequency
 from modules.utils.localization import get_text
 from modules.utils.helpers import _ensure_workspace_active, save_temp_csv
-from modules.utils.theme_manager import STATUS_COLORS
 from modules.utils.session_debug import set_state, get_state
 import json
 
@@ -102,36 +101,158 @@ def _skip_msg(text: str, accent: str = "#3B82F6") -> None:
     )
 
 
-def _render_executive_metrics(audit: dict, lang: str):
-    """SECTION 1 — EXECUTIVE HEALTH METRICS"""
-    st.markdown("<div class='audit-section'>", unsafe_allow_html=True)
-    _styled_header(get_text('health_score', lang))
-    m1, m2, m3, m4, m5, m6 = st.columns(6)
-    h = audit["health_score"]
-    h_glow = "green" if h >= 85 else ("orange" if h >= 60 else "red")
-    it = audit.get("inconsistency_total", 0)
-    nt = audit.get("noise_total", 0)
-    with m1: metric_card(get_text('health_score', lang), f"{h}%", get_text('weighted_index', lang), glow=h_glow)
-    with m2: metric_card(get_text('total_records', lang), f"{audit['total_records']:,}", get_text('rows', lang), glow="blue")
-    with m3: metric_card(get_text('duplicates', lang), f"{audit['duplicates']:,}", get_text('redundant_rows', lang), glow="red" if audit["duplicates"] > 0 else "green")
-    with m4: metric_card(get_text('missing_cells', lang), f"{audit['missing_cells']:,}", get_text('null_values', lang), glow="orange" if audit["missing_cells"] > 0 else "green")
-    with m5: metric_card(get_text('noise_values', lang), f"{nt:,}", get_text('noise_metric_subtitle', lang), glow="orange" if nt > 0 else "green")
-    with m6: metric_card(get_text('audit_data_inconsistency', lang), f"{it:,}", get_text('audit_inconsistent_cells', lang), glow="orange" if it > 0 else "green")
-    st.markdown("</div>", unsafe_allow_html=True)
+def _glass_card(content_html: str) -> None:
+    """Render content inside a reusable glassmorphism card container."""
+    st.markdown(
+        '<div style="margin:4px 0 8px 0; padding:16px 20px;'
+        ' background:rgba(255,255,255,0.03);'
+        ' backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);'
+        ' border:1px solid rgba(255,255,255,0.06);'
+        ' border-radius:16px;'
+        f' font-size:0.82rem; color:rgba(255,255,255,0.55); line-height:1.7;">{content_html}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _render_dataset_introduction(lang: str) -> None:
+    """Render the Dataset Introduction table — static schema metadata for Adult Census."""
+    _styled_header(get_text('audit_dataset_intro_title', lang))
+    _section_subtitle(
+        "Reference table describing each "
+        "<b style='color:rgba(255,255,255,0.65)'>attribute</b> in the dataset, "
+        "grouped by "
+        "<b style='color:rgba(255,255,255,0.65)'>domain category</b> "
+        "with its data nature."
+    )
+
+    # ── colour tokens ────────────────────────────────────────────────────
+    _GRP_COLORS = {
+        "demo":    "#60A5FA",   # Blue
+        "socio":   "#F59E0B",   # Amber
+        "employ":  "rgba(255,255,255,0.72)",  # Bright white
+        "finance": "#F87171",   # Red
+        "meta":    "#A78BFA",   # Purple
+        "target":  "#F97316",   # Orange
+    }
+
+
+    # ── table rows data ──────────────────────────────────────────────────
+    # (group_label, group_color, rowspan, no, attr, meaning, nature_html)
+    _ROWS = [
+        ("Personal Demographics",          _GRP_COLORS["demo"],  4, 1, "Age",            "Age of the individual (in years)",                              "Quantitative Variables"),
+        (None,                             None,                 0, 2, "Race",           "Ethnic or racial classification",                               "Categorical Variables"),
+        (None,                             None,                 0, 3, "Sex",            "Biological sex of the individual",                              "Categorical Variables"),
+        (None,                             None,                 0, 4, "Native_Country", "Country of origin or citizenship",                              "Categorical Variables"),
+
+        ("Socioeconomic & Education",      _GRP_COLORS["socio"], 4, 5, "Education",      "Highest level of education attained",                           "Categorical Variables"),
+        (None,                             None,                 0, 6, "Education_Num",  "Ordinal encoding of education level (1\u201316)",                    "Categorical Variables"),
+        (None,                             None,                 0, 7, "Marital_Status", "Current marital status classification",                         "Categorical Variables"),
+        (None,                             None,                 0, 8, "Relationship",   "Role within the household or family unit",                      "Categorical Variables"),
+
+        ("Employment & Occupation",        _GRP_COLORS["employ"],3, 9, "Workclass",      "Employment sector (Private, Government, Self-employed, etc.)",  "Categorical Variables"),
+        (None,                             None,                 0,10, "Occupation",     "Professional occupation or job classification",                 "Categorical Variables"),
+        (None,                             None,                 0,11, "Hours_per_Week", "Average weekly working hours",                                  "Quantitative Variables"),
+
+        ("Financial Indicators",           _GRP_COLORS["finance"],2,12,"Capital_Gain",   "Capital gains from investment or asset sales",                  "Financial Variables"),
+        (None,                             None,                 0,13, "Capital_Loss",   "Capital losses from investment or asset sales",                 "Financial Variables"),
+
+        ("Sampling & Technical Metadata",  _GRP_COLORS["meta"],1,14,"Fnlwgt",       "Final sampling weight assigned by the Census Bureau",           "Quantitative Variables"),
+
+        ("Target Variable",                _GRP_COLORS["target"],1,15, "Income",         "Annual income bracket (\u226450K / >50K)",                           "Binary categorical label"),
+    ]
+
+    # ── build HTML rows ──────────────────────────────────────────────────
+    rows_html = ""
+    is_target_row = False
+    for group_label, group_color, rowspan, no, attr, meaning, nature_html in _ROWS:
+        group_td = ""
+        if group_label is not None:
+            is_target_row = group_label == "Target Variable"
+            group_td = (
+                f"<td rowspan='{rowspan}' style='"
+                f"font-weight:700; font-size:0.82rem; color:{group_color};"
+                f" padding:12px 14px; vertical-align:middle;"
+                f" border-bottom:1px solid rgba(255,255,255,0.06);"
+                f" border-right:1px solid rgba(255,255,255,0.06);"
+                f" white-space:nowrap;"
+                f"'>{group_label}</td>"
+            )
+
+        # Highlight target variable row with subtle accent background
+        row_bg = " background:rgba(249,115,22,0.08);" if is_target_row else ""
+        rows_html += (
+            f"<tr style='border-bottom:1px solid rgba(255,255,255,0.06);{row_bg}'>"
+            f"{group_td}"
+            f"<td style='text-align:center; color:rgba(255,255,255,0.4); padding:10px 8px;"
+            f" font-size:0.80rem; border-right:1px solid rgba(255,255,255,0.06);'>{no}</td>"
+            f"<td style='font-weight:600; color:rgba(255,255,255,0.82); padding:10px 14px;"
+            f" font-size:0.82rem; border-right:1px solid rgba(255,255,255,0.06);'>{attr}</td>"
+            f"<td style='color:rgba(255,255,255,0.55); padding:10px 14px;"
+            f" font-size:0.80rem; border-right:1px solid rgba(255,255,255,0.06);'>{meaning}</td>"
+            f"<td style='text-align:left; padding:10px 14px;"
+            f" font-size:0.80rem; color:rgba(255,255,255,0.55);'>{nature_html}</td>"
+            f"</tr>"
+        )
+
+    # ── full table ───────────────────────────────────────────────────────
+    table_html = (
+        "<div style='"
+        "background:rgba(255,255,255,0.02);"
+        "border:1px solid rgba(255,255,255,0.06);"
+        "border-radius:16px;"
+        "overflow:hidden;"
+        "backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);"
+        "margin-bottom:16px;"
+        "'>"
+        "<table style='width:100%; border-collapse:collapse; table-layout:auto;'>"
+        "<thead>"
+        "<tr style='background:rgba(255,255,255,0.04); border-bottom:1px solid rgba(255,255,255,0.08);'>"
+        "<th style='text-align:left; padding:12px 14px; font-size:0.75rem;"
+        " font-weight:700; color:rgba(255,255,255,0.5);"
+        " text-transform:uppercase; letter-spacing:1px; width:20%;"
+        " border-right:1px solid rgba(255,255,255,0.06);'>Attribute Group</th>"
+        "<th style='text-align:center; padding:12px 8px; font-size:0.75rem;"
+        " font-weight:700; color:rgba(255,255,255,0.5);"
+        " text-transform:uppercase; letter-spacing:1px; width:5%;"
+        " border-right:1px solid rgba(255,255,255,0.06);'>No</th>"
+        "<th style='text-align:left; padding:12px 14px; font-size:0.75rem;"
+        " font-weight:700; color:rgba(255,255,255,0.5);"
+        " text-transform:uppercase; letter-spacing:1px; width:16%;"
+        " border-right:1px solid rgba(255,255,255,0.06);'>Attribute</th>"
+        "<th style='text-align:left; padding:12px 14px; font-size:0.75rem;"
+        " font-weight:700; color:rgba(255,255,255,0.5);"
+        " text-transform:uppercase; letter-spacing:1px; width:36%;"
+        " border-right:1px solid rgba(255,255,255,0.06);'>Meaning</th>"
+        "<th style='text-align:left; padding:12px 14px; font-size:0.75rem;"
+        " font-weight:700; color:rgba(255,255,255,0.5);"
+        " text-transform:uppercase; letter-spacing:1px; width:23%;'>Nature Variables</th>"
+        "</tr>"
+        "</thead>"
+        f"<tbody>{rows_html}</tbody>"
+        "</table>"
+        "</div>"
+    )
+
+    st.markdown(table_html, unsafe_allow_html=True)
     section_divider()
 
 
-def _render_key_issues_summary(audit: dict, df: pd.DataFrame) -> None:
-    """Render a glassmorphism 'Key Issues Identified' card with severity dots."""
-    # severity: "red" | "orange" | "yellow"
+
+def _render_key_issues_summary(audit: dict, lang: str) -> None:
+    """Render a glassmorphism 'Key Issues Identified' card with severity dots.
+
+    Uses precomputed lists from `audit` dict — NO re-computation.
+    """
+    t = lambda key, **kw: get_text(key, lang, **kw)
     issues: list = []
-    # 1. Missing values
-    missing_by_col = df.isnull().sum()
-    missing_cols = missing_by_col[missing_by_col > 0]
-    if not missing_cols.empty:
-        col_names = ", ".join(f'<b style="color:#F59E0B">{c}</b>' for c in missing_cols.index)
+
+    # 1. Missing values — from precomputed audit["missing_columns"]
+    missing_cols = audit.get("missing_columns", [])
+    if missing_cols:
+        col_names = ", ".join(f'<b style="color:#F59E0B">{c}</b>' for c in missing_cols)
         issues.append(("orange", f"Missing values detected in {col_names}"))
-    # 2. Noise values
+
+    # 2. Noise values — from audit dict
     noise_df = audit.get("noise_values", pd.DataFrame())
     if not noise_df.empty and "Column" in noise_df.columns:
         noise_cols = ", ".join(f'<b style="color:#F59E0B">{c}</b>' for c in noise_df["Column"].tolist())
@@ -141,49 +262,46 @@ def _render_key_issues_summary(audit: dict, df: pd.DataFrame) -> None:
             issues.append(("orange", f"Noise values identified in {noise_cols} (e.g. {example_str})"))
         else:
             issues.append(("orange", f"Noise values identified in {noise_cols}"))
-    # 3. Extreme skewness
-    from modules.core.audit_engine import compute_skewness
-    skewed_cols = []
-    for col in df.select_dtypes(include=["number"]).columns:
-        skew = compute_skewness(df[col])
-        if skew is not None and abs(skew) > 1.0:
-            skewed_cols.append(col)
+
+    # 3. Extreme skewness — from precomputed audit["skewed_columns"]
+    skewed_cols = audit.get("skewed_columns", [])
     if skewed_cols:
         col_names = ", ".join(f'<b style="color:#F59E0B">{c}</b>' for c in skewed_cols)
         issues.append(("yellow", f'Extreme skewness (<b style="color:#F59E0B">|skew| > 1.0</b>) in {col_names}'))
-    # 4. Duplicates
+
+    # 4. Duplicates — from audit dict
     dup_count = audit.get("duplicates", 0)
     if dup_count > 0:
         issues.append(("red", f'<b style="color:#FF5B5C">{dup_count:,}</b> duplicate rows detected'))
-    # 5. Outliers — derive from cached audit summary (avoid re-computing)
-    summary_df = audit_engine.compute_data_summary(df)
-    outlier_cols = summary_df.loc[
-        ~summary_df["Outliers"].astype(str).str.startswith("None")
-        & (summary_df["Outliers"] != "—"),
-        "Column"
-    ].tolist()
+
+    # 5. Outliers — from precomputed audit["outlier_columns"]
+    outlier_cols = audit.get("outlier_columns", [])
     if outlier_cols:
         col_names = ", ".join(f'<b style="color:#F59E0B">{c}</b>' for c in outlier_cols)
         issues.append(("orange", f"Outliers detected in {col_names}"))
-    # 6. Inconsistencies
+
+    # 6. Inconsistencies — from audit dict
     incon = audit.get("inconsistency_total", 0)
     if incon > 0:
         issues.append(("red", f'<b style="color:#FF5B5C">{incon:,}</b> data consistency violations found'))
 
-    # --- Severity dot colors ---
+    # 7. Low-variance columns — from precomputed audit["low_variance_columns"]
+    lv_cols = audit.get("low_variance_columns", [])
+    if lv_cols:
+        col_names = ", ".join(f'<b style="color:#F59E0B">{c}</b>' for c in lv_cols)
+        issues.append(("yellow", f'Low-variance (≥ 80% identical values) in {col_names} — outlier detection may fail'))
 
+    # --- Severity dot colors ---
     dot_colors = {"red": "#FF5B5C", "orange": "#FF9F43", "yellow": "#F59E0B"}
 
     # --- Section header ---
-
-    _styled_header("Key Issues Identified")
+    _styled_header(t('audit_key_issues_title'))
     _section_subtitle(
         "Automated diagnostic summary based on the current dataset. "
         "Each finding is ranked by <b style='color:rgba(255,255,255,0.65)'>severity</b> to prioritize data cleaning."
     )
 
     # --- Render glassmorphism card ---
-
     if issues:
         rows_html = ""
         for severity, text in issues:
@@ -197,43 +315,25 @@ def _render_key_issues_summary(audit: dict, df: pd.DataFrame) -> None:
                 f'<span style="flex:1;">{text}</span>'
                 f'</div>'
             )
-
-        _card_html = (
-            '<div style="margin:4px 0 8px 0; padding:16px 20px;'
-            ' background:rgba(255,255,255,0.03);'
-            ' backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);'
-            ' border:1px solid rgba(255,255,255,0.06);'
-            ' border-radius:16px;'
-            ' font-size:0.82rem; color:rgba(255,255,255,0.55); line-height:1.7;">'
-            '<div style="display:flex; justify-content:flex-end; margin-bottom:6px;">'
+        plural_s = "s" if len(issues) != 1 else ""
+        badge_html = (
+            f'<div style="display:flex; justify-content:flex-end; margin-bottom:6px;">'
             f'<span style="background:rgba(255,95,92,0.15); color:#FF5B5C; padding:2px 10px;'
             f' border-radius:12px; font-size:0.72rem; font-weight:600;">'
-            f'{len(issues)} issue{"s" if len(issues) != 1 else ""} found'
+            f'{t("audit_n_issues_found", n=len(issues), s=plural_s)}'
             f'</span></div>'
-            f'{rows_html}'
-            '</div>'
         )
-
-        st.markdown(_card_html, unsafe_allow_html=True)
+        _glass_card(f'{badge_html}{rows_html}')
     else:
-        _ok_html = (
-            '<div style="margin:4px 0 8px 0; padding:16px 20px;'
-            ' background:rgba(255,255,255,0.03);'
-            ' backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);'
-            ' border:1px solid rgba(255,255,255,0.06);'
-            ' border-radius:16px;'
-            ' font-size:0.82rem; color:rgba(255,255,255,0.55); line-height:1.7;">'
+        ok_content = (
             '<div style="display:flex; align-items:center; gap:10px;">'
             '<span style="display:inline-block; width:8px; height:8px; border-radius:50%;'
             ' background:#7FB135; box-shadow:0 0 6px rgba(127,177,53,0.4);"></span>'
-            '<b style="color:rgba(255,255,255,0.75);">No Issues Detected</b>'
+            f'<b style="color:rgba(255,255,255,0.75);">{t("audit_no_issues")}</b>'
             '</div>'
-            '<span style="margin-left:18px; color:rgba(255,255,255,0.4);">'
-            'All quality checks passed. The dataset appears clean and ready for analysis.'
-            '</span></div>'
+            f'<span style="margin-left:18px; color:rgba(255,255,255,0.4);">{t("audit_all_clear")}</span>'
         )
-
-        st.markdown(_ok_html, unsafe_allow_html=True)
+        _glass_card(ok_content)
     section_divider()
 
 
@@ -243,24 +343,32 @@ def _render_issue_composition(audit: dict, lang: str):
     _section_subtitle("Proportional breakdown of all detected data quality issues — "
         "<b style='color:rgba(255,255,255,0.65)'>missing values</b>, "
         "<b style='color:rgba(255,255,255,0.65)'>duplicates</b>, "
-        "<b style='color:rgba(255,255,255,0.65)'>inconsistencies</b>, and "
-        "<b style='color:rgba(255,255,255,0.65)'>noise</b> — relative to total dataset cells.")
+        "<b style='color:rgba(255,255,255,0.65)'>inconsistencies</b>, "
+        "<b style='color:rgba(255,255,255,0.65)'>noise</b>, and "
+        "<b style='color:rgba(255,255,255,0.65)'>low-variance columns</b> — relative to total dataset cells.")
     total_rows = audit.get("total_records", 0)
     total_cols = audit.get("attributes", 0)
     total_values = total_rows * total_cols
     duplicate_cells = audit.get("duplicates", 0) * total_cols
+    low_var_cols = audit.get("low_variance_total", 0)
+    low_var_cells = low_var_cols * total_rows  # cell-based count for % calc
     issue_dict = {
         get_text("compose_missing", lang):        audit.get("missing_cells", 0),
         get_text("compose_duplicates", lang):      duplicate_cells,
         get_text("compose_inconsistencies", lang): audit.get("inconsistency_total", 0),
         get_text("compose_noise_values", lang):    audit.get("noise_total", 0),
+        get_text("compose_low_variance", lang):    low_var_cells,
     }
 
     if not issue_dict or total_values == 0:
         _skip_msg(get_text('audit_no_issue_data', lang), accent='#3B82F6')
     else:
         dup_label = get_text("compose_duplicates", lang)
-        display_overrides = {dup_label: audit.get("duplicates", 0)}
+        lv_label = get_text("compose_low_variance", lang)
+        display_overrides = {
+            dup_label: audit.get("duplicates", 0),
+            lv_label: low_var_cols,
+        }
         total_issues = sum(issue_dict.values())
         clean_pct = round((total_values - total_issues) / total_values * 100, 1) if total_values > 0 else 100.0
         issue_pct = round(total_issues / total_values * 100, 2) if total_values > 0 else 0.0
@@ -270,13 +378,32 @@ def _render_issue_composition(audit: dict, lang: str):
             (get_text('audit_clean_pct', lang, pct=clean_pct), "badge-green"),
         ])
         st.markdown("<div class='chart-glow'>", unsafe_allow_html=True)
-        fig = plot_issue_composition(issue_dict, total_values, display_overrides=display_overrides)
+
+        # Build rich annotation labels for each bar
+        missing_label = get_text("compose_missing", lang)
+        noise_label = get_text("compose_noise_values", lang)
+        incon_label = get_text("compose_inconsistencies", lang)
+        dup_count = audit.get("duplicates", 0)
+        detail_labels = {
+            missing_label: f"{audit.get('missing_cells', 0):,} values",
+            noise_label: f"{audit.get('noise_total', 0):,} values",
+            incon_label: f"{audit.get('inconsistency_total', 0):,} values",
+            dup_label: f"{dup_count:,} rows · {duplicate_cells:,} values",
+            lv_label: f"{low_var_cols:,} cols · {low_var_cells:,} values",
+        }
+
+        fig = plot_issue_composition(
+            issue_dict, total_values,
+            display_overrides=display_overrides,
+            detail_labels=detail_labels,
+        )
         # Each bar click scrolls to the corresponding dedicated section below
         LABEL_TO_ANCHOR = {
             "missing":     "section-missing-values",
             "duplicat":    "section-duplicate-rows",
             "noise":       "section-noise-values",
             "inconsisten": "section-inconsistencies",
+            "low-variance": "section-low-variance",
         }
 
         event = st.plotly_chart(
@@ -309,7 +436,7 @@ def _render_issue_composition(audit: dict, lang: str):
 
 def _render_missing_values(audit: dict, df: pd.DataFrame, lang: str):
     """SECTION — MISSING VALUES breakdown by column."""
-    _styled_header("Missing Values", anchor='section-missing-values')
+    _styled_header(get_text('compose_missing', lang), anchor='section-missing-values')
     _section_subtitle("Column-level breakdown of "
         "<b style='color:rgba(255,255,255,0.65)'>null</b> and "
         "<b style='color:rgba(255,255,255,0.65)'>empty cells</b> — shows which fields "
@@ -318,7 +445,7 @@ def _render_missing_values(audit: dict, df: pd.DataFrame, lang: str):
     total_rows = audit.get("total_records", 0)
     total_missing = audit.get("missing_cells", 0)
     if total_missing == 0:
-        _skip_msg("No missing values detected in the dataset.")
+        _skip_msg(get_text('audit_no_missing', lang))
         section_divider()
         return
     total_cols = audit.get("attributes", 0)
@@ -356,7 +483,7 @@ def _render_missing_values(audit: dict, df: pd.DataFrame, lang: str):
 
 def _render_noise_values(audit: dict, lang: str):
     """SECTION — NOISE VALUES — placeholder/noise values detected."""
-    _styled_header("Noise Values", anchor='section-noise-values')
+    _styled_header(get_text('compose_noise_values', lang), anchor='section-noise-values')
     _section_subtitle("Detected "
         "<b style='color:rgba(255,255,255,0.65)'>placeholder</b> or "
         "<b style='color:rgba(255,255,255,0.65)'>corrupted values</b> such as "
@@ -396,7 +523,7 @@ def _render_noise_values(audit: dict, lang: str):
 
 def _render_duplicate_rows(audit: dict, df: pd.DataFrame, lang: str):
     """SECTION — DUPLICATE ROWS with actual row content."""
-    _styled_header("Duplicate Rows", anchor='section-duplicate-rows')
+    _styled_header(get_text('compose_duplicates', lang), anchor='section-duplicate-rows')
     _section_subtitle("<b style='color:rgba(255,255,255,0.65)'>Exact duplicate rows</b> "
         "detected in the dataset — rows that are "
         "<b style='color:rgba(255,255,255,0.65)'>identical across all columns</b> "
@@ -404,7 +531,7 @@ def _render_duplicate_rows(audit: dict, df: pd.DataFrame, lang: str):
     dup_count = audit.get("duplicates", 0)
     total_rows = audit.get("total_records", 0)
     if dup_count == 0:
-        _skip_msg("No duplicate rows detected in the dataset.")
+        _skip_msg(get_text('audit_no_duplicates', lang))
         section_divider()
         return
     dup_pct = round(dup_count / total_rows * 100, 2) if total_rows > 0 else 0.0
@@ -457,7 +584,7 @@ def _render_duplicate_rows(audit: dict, df: pd.DataFrame, lang: str):
 
 def _render_inconsistencies(audit: dict, lang: str):
     """SECTION — INCONSISTENCIES — categorical data quality issues."""
-    _styled_header("Inconsistencies", anchor='section-inconsistencies')
+    _styled_header(get_text('compose_inconsistencies', lang), anchor='section-inconsistencies')
     _section_subtitle("Categorical data quality issues — "
         "<b style='color:rgba(255,255,255,0.65)'>mixed casing</b>, "
         "<b style='color:rgba(255,255,255,0.65)'>leading/trailing whitespace</b>, "
@@ -488,6 +615,74 @@ def _render_inconsistencies(audit: dict, lang: str):
             "Detail": st.column_config.TextColumn("Details / Examples", width="large"),
             "Count": st.column_config.NumberColumn("Affected Rows", format="%d", width="small"),
         },
+    )
+
+    st.markdown(_BACK_TO_OVERVIEW, unsafe_allow_html=True)
+    section_divider()
+
+
+def _render_low_variance(audit: dict, lang: str):
+    """SECTION — LOW-VARIANCE / ZERO-SPREAD COLUMNS."""
+    _styled_header("Low-Variance Columns", anchor="section-low-variance", accent="#F59E0B")
+    _section_subtitle(
+        "Numeric columns where a <b style='color:rgba(255,255,255,0.65)'>single dominant value</b> "
+        "occupies ≥ 80% of non-null records — causing "
+        "<b style='color:rgba(255,255,255,0.65)'>IQR and MAD to collapse to zero</b>, "
+        "which makes statistical outlier detection impossible."
+    )
+
+    low_var_df = audit.get("low_variance", pd.DataFrame())
+    if low_var_df.empty:
+        _skip_msg("No low-variance columns detected — all numeric features have sufficient spread.", accent="#F59E0B")
+        section_divider()
+        return
+
+    n_cols = len(low_var_df)
+    _badge_bar([
+        (f"{n_cols} low-variance column{'s' if n_cols != 1 else ''}", "badge-orange"),
+        ("≥ 80% single-value dominance", 'style="background:rgba(245,158,11,0.12); color:#F59E0B;"'),
+    ])
+
+    # Highlight rows with extreme dominance (≥ 95%)
+    def _highlight_extreme(row):
+        if row["Dominant %"] >= 95:
+            return [
+                "background-color: rgba(245,158,11,0.18); "
+                "color: rgba(245,158,11,0.7);"
+            ] * len(row)
+        return [""] * len(row)
+
+    styled = low_var_df.style.apply(_highlight_extreme, axis=1)
+    st.dataframe(
+        styled,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Column": st.column_config.TextColumn("Column", width=140),
+            "Dominant Value": st.column_config.NumberColumn("Dominant Value", width=120),
+            "Dominant %": st.column_config.ProgressColumn(
+                "Dominant %", min_value=0, max_value=100, format="%.1f%%", width=130,
+            ),
+            "Distinct Values": st.column_config.NumberColumn("Distinct", format="%d", width=80),
+        },
+    )
+
+    # Info box with explanation
+    st.markdown(
+        '<div style="margin:4px 0 12px 0; padding:12px 16px; background:rgba(245,158,11,0.10);'
+        ' border-left:3px solid rgba(245,158,11,0.5); border-radius:0 8px 8px 0;'
+        ' font-size:0.78rem; color:rgba(255,255,255,0.45); line-height:1.9;">'
+        '<b style="color:rgba(255,255,255,0.6);">⚠ Impact on Preprocessing</b><br>'
+        '<b style="color:#F59E0B;">Outlier Detection</b> — '
+        '<span style="color:rgba(255,255,255,0.35);">'
+        'IQR and MAD equal zero because ≥50% of values are identical. '
+        'Statistical fences cannot be computed.</span><br>'
+        '<b style="color:#F59E0B;">Recommended Action</b> — '
+        '<span style="color:rgba(255,255,255,0.35);">'
+        'Use <b>Binary Indicator Transform</b> (value vs. non-value) '
+        'or <b>Binning</b> into meaningful groups via Step 7 configuration.</span>'
+        '</div>',
+        unsafe_allow_html=True,
     )
 
     st.markdown(_BACK_TO_OVERVIEW, unsafe_allow_html=True)
@@ -560,7 +755,7 @@ def _render_data_summary(df: pd.DataFrame, lang: str):
 
 def _render_category_frequency(df: pd.DataFrame, lang: str):
     """SECTION — CATEGORY FREQUENCY BAR CHART."""
-    _styled_header("Category Frequency", accent='#3B82F6')
+    _styled_header(get_text('audit_cat_frequency_title', lang), accent='#3B82F6')
     _section_subtitle(
         "Visualize the <b style='color:rgba(255,255,255,0.65)'>value distribution</b> of categorical columns. "
         "<b style='color:rgba(255,255,255,0.65)'>Rare categories</b> (\u2264 1% frequency) are highlighted in <b style='color:#F59E0B'>amber</b>."
@@ -568,7 +763,7 @@ def _render_category_frequency(df: pd.DataFrame, lang: str):
 
     cat_cols = df.select_dtypes(include=["object", "category"]).columns.tolist()
     if not cat_cols:
-        _skip_msg("No categorical columns available.", accent='#3B82F6')
+        _skip_msg(get_text('audit_no_cat_cols', lang), accent='#3B82F6')
         section_divider()
         return
     selected_col = st.selectbox(
@@ -644,28 +839,34 @@ def main():
 
     # Note: audit is a dict (not a DataFrame) — save_temp_csv is not applicable
 
-    # --- EXECUTIVE METRICS (always visible above tabs) ---
-    _render_executive_metrics(audit, lang)
+
+    # ── Spacing (sync with other pages) ─────────────────────────────────
+    st.markdown('<div style="height:20px;"></div>', unsafe_allow_html=True)
 
     # --- KEY ISSUES IDENTIFIED (standalone section) ---
-    _render_key_issues_summary(audit, df)
+    _render_key_issues_summary(audit, lang)
 
-    # --- 3-TAB LAYOUT ---
-    tab1, tab2, tab3 = st.tabs([
-        ":material/pie_chart: Quality Issues",
-        ":material/table_chart: Statistical Profiling",
-        ":material/bar_chart: Diagnostic Charts",
+    # --- 4-TAB LAYOUT ---
+    tab_intro, tab1, tab2, tab3 = st.tabs([
+        get_text('audit_tab_intro', lang),
+        get_text('audit_tab_quality', lang),
+        get_text('audit_tab_profiling', lang),
+        get_text('audit_tab_charts', lang),
     ])
+    with tab_intro:
+        _render_dataset_introduction(lang)
     with tab1:
         _render_issue_composition(audit, lang)
         _render_missing_values(audit, df, lang)
         _render_noise_values(audit, lang)
         _render_duplicate_rows(audit, df, lang)
         _render_inconsistencies(audit, lang)
+        _render_low_variance(audit, lang)
     with tab2:
         _render_data_summary(df, lang)
     with tab3:
         _render_category_frequency(df, lang)
         _render_risk_inspector(df, lang)
+
 if __name__ == "__main__":
     main()

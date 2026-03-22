@@ -4,7 +4,7 @@ preprocessing_engine.py — Vectorized Data Cleaning & Transformation Engine
 Responsibilities:
     • Noise / placeholder-value removal (replace with NaN or mode)
     • Text formatting: whitespace trimming, canonical-casing normalization
-    • Smart missing-value imputation (mean/median/mode based on skewness)
+    • Missing-value imputation (mean/median/mode based on skewness)
     • Duplicate row removal
     • Outlier treatment with Admin Safe Zone awareness:
         - IQR capping         (moderately skewed, |skew| 0.5–1.0)
@@ -36,6 +36,53 @@ from typing import Any, Dict, List, Optional, Tuple
 from modules.core.audit_engine import _MAD_SCALE  # noqa: E402 (circular-safe: no UI imports)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# PUBLIC CONSTANTS — single source of truth for labels used across the app
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Encoding strategy labels (Step 8)
+ENC_LABEL: str = "Label Encoding"
+ENC_ONEHOT: str = "One-Hot (drop_first)"
+ENC_DROP_REDUNDANT: str = "Drop (Redundant)"
+
+# Scaler method labels (Step 9)
+SCALER_STANDARD: str = "StandardScaler"
+SCALER_ROBUST: str = "RobustScaler"
+
+# Outlier action labels (Step 5)
+ACTION_NO_TREATMENT: str = "No Outlier Treatment"
+
+# Binning preview type labels (Step 7)
+BINNING_TYPE_NUMERIC: str = "Numeric Binning"
+BINNING_TYPE_CATEGORY: str = "Category Mapping"
+
+# Log transform method labels (Step 6)
+LOG_METHOD_LOG1P: str = "log1p"
+LOG_METHOD_YJ: str = "yeo-johnson"
+
+# Pipeline step colors — indexed by step number (1-based)
+STEP_COLORS: Dict[int, str] = {
+    1: "#3B82F6",  # Standardize & Type Cast
+    2: "#EF4444",  # Noise Cleaning
+    3: "#F59E0B",  # Duplicate Removal
+    4: "#F27024",  # Missing Value Imputation
+    5: "#8B5CF6",  # Outlier Treatment
+    6: "#7FB135",  # Log Transformation
+    7: "#10B981",  # Binning & Mapping
+    8: "#EC4899",  # Feature Encoding
+    9: "#06B6D4",  # Feature Scaling
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PRIVATE HELPERS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _build_col_lower_map(df: pd.DataFrame) -> Dict[str, str]:
+    """Build case-insensitive column name lookup: ``{lowercase → actual_name}``."""
+    return {c.lower(): c for c in df.columns}
+
+
 class PreprocessingEngine:
     """
     High-performance engine for data cleaning and transformation.
@@ -48,33 +95,17 @@ class PreprocessingEngine:
     1. ``standardize_and_type_cast`` — trim, normalize casing, convert dtypes
     2. ``clean_noise_values``        — replace noise tokens with NaN
     3. ``drop_duplicates``           — keep first occurrence of each unique row
-    4. ``handle_missing_smart``      — impute missing values (mean/median/mode)
+    4. ``impute_missing``            — impute missing values (mean/median/mode)
     5. ``handle_outliers``           — cap or remove per-column outliers
     6. ``apply_log_transform``       — log1p / Yeo-Johnson for skewed columns
     7. ``apply_binning_mapping``     — discretize numerics & group categories
     8. ``apply_feature_encoding``    — label + one-hot encoding for categoricals
+    9. ``apply_feature_scaling``     — StandardScaler / RobustScaler per column
     """
 
     # ─────────────────────────────────────────────────────────────────────────
     # 1. UTILITIES
     # ─────────────────────────────────────────────────────────────────────────
-
-    @staticmethod
-    def get_column_stats(df: pd.DataFrame) -> Dict[str, Any]:
-        """
-        Return a summary of basic data quality counts for the DataFrame.
-
-        Returns:
-            dict with keys:
-              - ``missing_total``         — total null cells across all columns.
-              - ``duplicates_total``      — number of fully duplicate rows.
-              - ``columns_with_missing``  — list of column names that have ≥ 1 null.
-        """
-        return {
-            "missing_total":        int(df.isnull().sum().sum()),
-            "duplicates_total":     int(df.duplicated().sum()),
-            "columns_with_missing": df.columns[df.isnull().any()].tolist(),
-        }
 
     @staticmethod
     def drop_duplicates(df: pd.DataFrame) -> pd.DataFrame:
@@ -140,7 +171,7 @@ class PreprocessingEngine:
                 df = df.drop(index=noise_idx)
 
             elif strategy == "replace_nan":
-                # NaN lets the imputation step (handle_missing_smart) fill this
+                # NaN lets the imputation step (impute_missing) fill this
                 df.loc[noise_idx, col] = np.nan
 
             elif strategy == "replace_mode":
@@ -240,39 +271,52 @@ class PreprocessingEngine:
                 if replace_map:
                     df.loc[non_null, col] = str_vals.replace(replace_map)
 
-        # ── Phase 3: Auto dtype conversion (object → numeric) ────────────
+        # ── Phase 3: Schema-enforced dtype conversion ────────────
         if convert_dtypes:
-            obj_cols = df.select_dtypes(include=["object"]).columns.tolist()
-            for col in obj_cols:
-                non_null_series = df[col].dropna()
-                if non_null_series.empty:
-                    continue
+            from modules.utils.db_config_manager import get_rule
+            schema_rule = get_rule("employee_schema")
+            
+            target_dtypes = {}
+            if schema_rule and "columns" in schema_rule:
+                for col_info in schema_rule["columns"]:
+                    target_dtypes[col_info["name"].strip().lower()] = col_info["dtype"].lower()
 
-                coerced = pd.to_numeric(non_null_series, errors="coerce")
-                valid_count = int(coerced.notna().sum())
-                total_count = len(non_null_series)
-
-                if total_count > 0 and valid_count / total_count >= PreprocessingEngine._NUMERIC_COERCE_THRESHOLD:
-                    # Safe to convert — apply to full column (NaN stays NaN)
-                    df[col] = pd.to_numeric(df[col], errors="coerce")
+            for col in df.columns:
+                norm_name = col.strip().lower()
+                target_dtype = target_dtypes.get(norm_name)
+                
+                if target_dtype:
+                    # Enforce schema type strictly
+                    if target_dtype in ["int64", "int32", "int"]:
+                        coerced = pd.to_numeric(df[col], errors="coerce")
+                        try:
+                            df[col] = coerced.astype("Int64")
+                        except TypeError:
+                            df[col] = coerced.round().astype("Int64")
+                    elif target_dtype in ["float64", "float32", "float"]:
+                        df[col] = pd.to_numeric(df[col], errors="coerce").astype("float64")
+                    elif target_dtype in ["object", "category", "string"]:
+                        if not pd.api.types.is_object_dtype(df[col]) and not isinstance(df[col].dtype, pd.CategoricalDtype):
+                            df[col] = df[col].astype(str)
+                else:
+                    # Fallback to auto-conversion if not in schema and is object
+                    if df[col].dtype == "object":
+                        non_null_series = df[col].dropna()
+                        if non_null_series.empty:
+                            continue
+                        coerced = pd.to_numeric(non_null_series, errors="coerce")
+                        valid_count = int(coerced.notna().sum())
+                        total_count = len(non_null_series)
+                        
+                        if total_count > 0 and valid_count / total_count >= PreprocessingEngine._NUMERIC_COERCE_THRESHOLD:
+                            coerced_valid = coerced.dropna()
+                            if not coerced_valid.empty and (coerced_valid == coerced_valid.astype(int)).all():
+                                df[col] = pd.to_numeric(df[col], errors="coerce").astype("Int64")
+                            else:
+                                df[col] = pd.to_numeric(df[col], errors="coerce").astype("float64")
 
         return df
 
-    @staticmethod
-    def fix_text_formatting(
-        df: pd.DataFrame,
-        fix_whitespace: bool = True,
-        fix_casing: bool = True,
-        columns: Optional[List[str]] = None,
-    ) -> pd.DataFrame:
-        """Backward-compatible alias for ``standardize_and_type_cast``."""
-        return PreprocessingEngine.standardize_and_type_cast(
-            df,
-            fix_whitespace=fix_whitespace,
-            fix_casing=fix_casing,
-            convert_dtypes=False,
-            columns=columns,
-        )
 
     @staticmethod
     def get_type_cast_preview(df: pd.DataFrame) -> List[Dict[str, Any]]:
@@ -287,33 +331,67 @@ class PreprocessingEngine:
             ``Target Type``, ``Convertible``, ``% Convertible``.
         """
         results: List[Dict[str, Any]] = []
-        obj_cols = df.select_dtypes(include=["object"]).columns.tolist()
+        from modules.utils.db_config_manager import get_rule
+        schema_rule = get_rule("employee_schema")
+        
+        target_dtypes = {}
+        if schema_rule and "columns" in schema_rule:
+            for col_info in schema_rule["columns"]:
+                target_dtypes[col_info["name"].strip().lower()] = col_info["dtype"].lower()
 
-        for col in obj_cols:
+        for col in df.columns:
+            norm_name = col.strip().lower()
+            target_dtype = target_dtypes.get(norm_name)
+            current_dtype = str(df[col].dtype)
+            
             non_null_series = df[col].dropna()
-            if non_null_series.empty:
-                continue
-
-            coerced = pd.to_numeric(non_null_series, errors="coerce")
-            valid_count = int(coerced.notna().sum())
             total_count = len(non_null_series)
-            pct = valid_count / total_count * 100 if total_count > 0 else 0.0
-
-            if pct >= PreprocessingEngine._NUMERIC_COERCE_THRESHOLD * 100:
-                # Determine target type by checking if all valid values are integers
-                coerced_valid = coerced.dropna()
-                if not coerced_valid.empty and (coerced_valid == coerced_valid.astype(int)).all():
-                    target_type = "int64"
-                else:
-                    target_type = "float64"
-
-                results.append({
-                    "Column": col,
-                    "Current Type": "object",
-                    "Target Type": target_type,
-                    "Convertible": valid_count,
-                    "% Convertible": round(pct, 1),
-                })
+            
+            if target_dtype:
+                # Check if it needs coercion
+                if target_dtype in ["int64", "int32", "int"] and current_dtype not in ["int64", "Int64", "int32"]:
+                    coerced = pd.to_numeric(non_null_series, errors="coerce")
+                    valid_count = int(coerced.notna().sum())
+                    pct = valid_count / total_count * 100 if total_count > 0 else 0.0
+                    results.append({
+                        "Column": col,
+                        "Current Type": current_dtype,
+                        "Target Type": "Int64 (Schema)",
+                        "Convertible": valid_count,
+                        "% Convertible": round(pct, 1),
+                    })
+                elif target_dtype in ["float64", "float32", "float"] and current_dtype not in ["float64", "float32"]:
+                    coerced = pd.to_numeric(non_null_series, errors="coerce")
+                    valid_count = int(coerced.notna().sum())
+                    pct = valid_count / total_count * 100 if total_count > 0 else 0.0
+                    results.append({
+                        "Column": col,
+                        "Current Type": current_dtype,
+                        "Target Type": "float64 (Schema)",
+                        "Convertible": valid_count,
+                        "% Convertible": round(pct, 1),
+                    })
+            else:
+                # Fallback to auto-preview for object columns not in schema
+                if current_dtype == "object":
+                    if non_null_series.empty:
+                        continue
+                    coerced = pd.to_numeric(non_null_series, errors="coerce")
+                    valid_count = int(coerced.notna().sum())
+                    pct = valid_count / total_count * 100 if total_count > 0 else 0.0
+                    if pct >= PreprocessingEngine._NUMERIC_COERCE_THRESHOLD * 100:
+                        coerced_valid = coerced.dropna()
+                        if not coerced_valid.empty and (coerced_valid == coerced_valid.astype(int)).all():
+                            t_type = "Int64 (Auto)"
+                        else:
+                            t_type = "float64 (Auto)"
+                        results.append({
+                            "Column": col,
+                            "Current Type": current_dtype,
+                            "Target Type": t_type,
+                            "Convertible": valid_count,
+                            "% Convertible": round(pct, 1),
+                        })
 
         return results
 
@@ -322,70 +400,7 @@ class PreprocessingEngine:
     # ─────────────────────────────────────────────────────────────────────────
 
     @staticmethod
-    def handle_missing_values(
-        df: pd.DataFrame,
-        strategy: str,
-        columns: Optional[List[str]] = None,
-        fill_value: Any = None,
-    ) -> pd.DataFrame:
-        """
-        General-purpose missing-value handler with multiple strategies.
-
-        Args:
-            df:         Input DataFrame.
-            strategy:   One of:
-                          ``'drop_rows'``    — drop rows with any null in *columns*.
-                          ``'drop_cols'``    — drop the specified columns entirely.
-                          ``'fill_value'``   — fill with a fixed *fill_value*.
-                          ``'fill_mean'``    — fill numeric columns with column mean.
-                          ``'fill_median'``  — fill numeric columns with column median.
-                          ``'fill_mode'``    — fill each column with its mode.
-                          ``'ffill'``        — forward fill.
-                          ``'bfill'``        — backward fill.
-            columns:    Columns to process (``None`` = all columns).
-            fill_value: Value used when ``strategy='fill_value'``.
-
-        Returns:
-            DataFrame with missing values handled per the chosen strategy.
-        """
-        target_cols = columns if columns else df.columns.tolist()
-
-        if strategy == "drop_rows":
-            return df.dropna(subset=columns) if columns else df.dropna()
-
-        if strategy == "drop_cols":
-            return df.drop(columns=target_cols)
-
-        # ── Vectorized filling strategies ──────────────────────────────────
-        if strategy == "fill_value" and fill_value is not None:
-            df.loc[:, target_cols] = df[target_cols].fillna(fill_value)
-
-        elif strategy == "fill_mean":
-            num_cols = [c for c in target_cols if pd.api.types.is_numeric_dtype(df[c])]
-            if num_cols:
-                df.loc[:, num_cols] = df[num_cols].fillna(df[num_cols].mean())
-
-        elif strategy == "fill_median":
-            num_cols = [c for c in target_cols if pd.api.types.is_numeric_dtype(df[c])]
-            if num_cols:
-                df.loc[:, num_cols] = df[num_cols].fillna(df[num_cols].median())
-
-        elif strategy == "fill_mode":
-            for col in target_cols:
-                mode = df[col].mode()
-                if not mode.empty:
-                    df[col] = df[col].fillna(mode.iloc[0])
-
-        elif strategy == "ffill":
-            df.loc[:, target_cols] = df[target_cols].ffill()
-
-        elif strategy == "bfill":
-            df.loc[:, target_cols] = df[target_cols].bfill()
-
-        return df
-
-    @staticmethod
-    def handle_missing_smart(df: pd.DataFrame) -> pd.DataFrame:
+    def impute_missing(df: pd.DataFrame) -> pd.DataFrame:
         """
         Auto-fill missing values based on column dtype and distribution shape.
 
@@ -410,11 +425,15 @@ class PreprocessingEngine:
         for col in numeric_cols:
             if not df[col].isnull().any():
                 continue  # fast-path: no missing values in this column
+            
             strategy = recommend_fill_strategy(df[col])
-            if strategy == "mean":
-                df[col] = df[col].fillna(float(df[col].dropna().mean()))
-            else:
-                df[col] = df[col].fillna(float(df[col].dropna().median()))
+            non_null = df[col].dropna()
+            val = float(non_null.mean()) if strategy == "mean" else float(non_null.median())
+            
+            if pd.api.types.is_integer_dtype(df[col]):
+                val = int(round(val))
+                
+            df[col] = df[col].fillna(val)
 
         # ── Categorical: mode fill ───────────────────────────────────────
         for col in cat_cols:
@@ -601,6 +620,9 @@ class PreprocessingEngine:
         A column is a candidate when:
           - ``|skewness| > SKEW_LOG_THRESHOLD`` (default 1.0)
           - Column has at least 3 non-null values
+          - Column is **not** low-variance (dominant value ≥ 80%) — log
+            transform is ineffective for zero-spike distributions and
+            would break downstream Binning boundaries.
 
         For each candidate the recommended method is:
           - **log1p** when ``min >= 0`` (safe, preserves zeros)
@@ -616,9 +638,16 @@ class PreprocessingEngine:
         results: List[Dict[str, Any]] = []
         numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
 
-        from modules.core.audit_engine import compute_skewness
+        from modules.core.audit_engine import compute_skewness, detect_low_variance
+
+        # Build set of low-variance columns to exclude
+        low_var_df = detect_low_variance(df)
+        low_var_cols = set(low_var_df["Column"].tolist()) if not low_var_df.empty else set()
 
         for col in numeric_cols:
+            if col in low_var_cols:
+                continue  # skip — log transform is ineffective for zero-spread cols
+
             series = df[col].dropna()
             if len(series) < 3:
                 continue
@@ -631,7 +660,7 @@ class PreprocessingEngine:
             max_val = float(series.max())
 
             if abs(skew_val) > PreprocessingEngine.SKEW_LOG_THRESHOLD:
-                method = "log1p" if min_val >= 0 else "yeo-johnson"
+                method = LOG_METHOD_LOG1P if min_val >= 0 else LOG_METHOD_YJ
                 results.append({
                     "Column": col,
                     "Skewness": skew_val,
@@ -676,14 +705,18 @@ class PreprocessingEngine:
             if col not in df.columns:
                 continue
 
-            if method == "log1p":
+            # Ensure float dtype before transform (int64 → float64)
+            if pd.api.types.is_integer_dtype(df[col]):
+                df[col] = df[col].astype("float64")
+
+            if method == LOG_METHOD_LOG1P:
                 # Safe for values >= 0 (including zero)
                 non_null = df[col].notna()
                 df.loc[non_null, col] = np.log1p(df.loc[non_null, col])
 
-            elif method == "yeo-johnson":
+            elif method == LOG_METHOD_YJ:
                 from sklearn.preprocessing import PowerTransformer
-                pt = PowerTransformer(method="yeo-johnson", standardize=False)
+                pt = PowerTransformer(method=LOG_METHOD_YJ, standardize=False)
                 non_null = df[col].notna()
                 values = df.loc[non_null, col].values.reshape(-1, 1)
                 df.loc[non_null, col] = pt.fit_transform(values).ravel()
@@ -715,8 +748,7 @@ class PreprocessingEngine:
         if not binning_config:
             return results
 
-        # Case-insensitive lookup: lowercase config key → actual df column name
-        col_lower_map = {c.lower(): c for c in df.columns}
+        col_lower_map = _build_col_lower_map(df)
 
         for col, cfg in binning_config.items():
             actual_col = col_lower_map.get(col.lower())
@@ -732,7 +764,7 @@ class PreprocessingEngine:
                 details = " | ".join(labels)
                 results.append({
                     "Column": actual_col,
-                    "Type": "Numeric Binning",
+                    "Type": BINNING_TYPE_NUMERIC,
                     "Action": action,
                     "Details": details,
                     "Unique Before": unique_before,
@@ -745,7 +777,7 @@ class PreprocessingEngine:
                 details = ", ".join(groups.keys())
                 results.append({
                     "Column": actual_col,
-                    "Type": "Category Mapping",
+                    "Type": BINNING_TYPE_CATEGORY,
                     "Action": action,
                     "Details": details,
                     "Unique Before": unique_before,
@@ -771,15 +803,13 @@ class PreprocessingEngine:
             DataFrame with binned / mapped columns.
         """
         if binning_config is None:
-            import streamlit as st
-            rules = st.session_state.get("analysis_rules", {})
-            binning_config = rules.get("binning_config", {})
+            from modules.utils.db_config_manager import get_rule
+            binning_config = get_rule("binning_config") or {}
 
         if not binning_config:
             return df
 
-        # Case-insensitive lookup: lowercase config key → actual df column name
-        col_lower_map = {c.lower(): c for c in df.columns}
+        col_lower_map = _build_col_lower_map(df)
 
         for col, cfg in binning_config.items():
             actual_col = col_lower_map.get(col.lower())
@@ -871,8 +901,7 @@ class PreprocessingEngine:
         df_cols_lower = {c.lower() for c in df.columns}
 
         # ── Build lookup tables from binning_config ──────────────────────
-        # Case-insensitive: config key → actual df column name
-        col_lower_map = {c.lower(): c for c in df.columns}
+        col_lower_map = _build_col_lower_map(df)
         bin_labels: Dict[str, List[str]] = {}   # col_lower → bin labels
         map_groups: Dict[str, List[str]] = {}   # col_lower → group names
         if binning_config:
@@ -926,7 +955,7 @@ class PreprocessingEngine:
                     "Column": col,
                     "Unique": n_unique,
                     "Examples": examples,
-                    "Encoding": "Drop (Redundant)",
+                    "Encoding": ENC_DROP_REDUNDANT,
                     "Reason": f"Numeric equivalent '{numeric_counterpart}' exists",
                 })
                 continue
@@ -937,7 +966,7 @@ class PreprocessingEngine:
                     "Column": col,
                     "Unique": n_unique,
                     "Examples": examples,
-                    "Encoding": "Label Encoding",
+                    "Encoding": ENC_LABEL,
                     "Reason": "Binary column",
                 })
                 continue
@@ -948,8 +977,19 @@ class PreprocessingEngine:
                     "Column": col,
                     "Unique": n_unique,
                     "Examples": examples,
-                    "Encoding": "Label Encoding",
+                    "Encoding": ENC_LABEL,
                     "Reason": "Ordinal — natural order",
+                })
+                continue
+
+            # ── Binned numeric → ordinal (bins have inherent order) ───────
+            if col in binned_numeric_cols:
+                results.append({
+                    "Column": col,
+                    "Unique": n_unique,
+                    "Examples": examples,
+                    "Encoding": ENC_LABEL,
+                    "Reason": "Binned numeric — ordinal",
                 })
                 continue
 
@@ -958,7 +998,7 @@ class PreprocessingEngine:
                 "Column": col,
                 "Unique": n_unique,
                 "Examples": examples,
-                "Encoding": "One-Hot (drop_first)",
+                "Encoding": ENC_ONEHOT,
                 "Reason": "Nominal — no natural order",
             })
 
@@ -1007,11 +1047,11 @@ class PreprocessingEngine:
                 continue
             encoding = candidate["Encoding"]
 
-            if encoding == "Drop (Redundant)":
+            if encoding == ENC_DROP_REDUNDANT:
                 drop_cols.append(col)
-            elif encoding == "Label Encoding":
+            elif encoding == ENC_LABEL:
                 label_cols.append(col)
-            elif encoding == "One-Hot (drop_first)":
+            elif encoding == ENC_ONEHOT:
                 onehot_cols.append(col)
 
         # ── Step 1: Drop redundant columns ───────────────────────────────
@@ -1054,3 +1094,317 @@ class PreprocessingEngine:
                 )
 
         return df
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 9. FEATURE SCALING
+    # ─────────────────────────────────────────────────────────────────────────
+
+    #: Skewness threshold for auto-selecting the scaling method.
+    #: |skew| < threshold → StandardScaler, |skew| ≥ threshold → RobustScaler.
+    SKEW_SCALING_THRESHOLD: float = 0.5
+
+    @staticmethod
+    def get_scaling_preview(
+        df: pd.DataFrame,
+    ) -> List[Dict[str, Any]]:
+        """
+        Preview which scaler will be auto-selected for each numeric column.
+
+        Classification logic:
+          - Binary columns (≤ 2 unique non-null values) are **skipped** —
+            scaling 0/1 indicators is not meaningful.
+          - ``|skewness| < 0.5`` → **StandardScaler** (mean/std reliable).
+          - ``|skewness| ≥ 0.5`` → **RobustScaler** (median/IQR robust
+            against remaining skew and Safe-Zone-protected outliers).
+
+        Args:
+            df: Input DataFrame (not mutated). Should be post-encoding
+                (all columns numeric).
+
+        Returns:
+            List of dicts with keys: ``Column``, ``Skewness``, ``Min``,
+            ``Max``, ``Std``, ``Method``, ``Reason``.
+        """
+        from modules.core.audit_engine import compute_skewness
+
+        results: List[Dict[str, Any]] = []
+        numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
+
+        for col in numeric_cols:
+            series = df[col].dropna()
+            if len(series) < 3:
+                continue
+
+            # Skip binary / one-hot indicator columns
+            n_unique = int(series.nunique())
+            if n_unique <= 2:
+                continue
+
+            skew_val = compute_skewness(series)
+            if skew_val is None:
+                continue
+
+            min_val = round(float(series.min()), 2)
+            max_val = round(float(series.max()), 2)
+            std_val = round(float(series.std(ddof=1)), 2)
+
+            if abs(skew_val) < PreprocessingEngine.SKEW_SCALING_THRESHOLD:
+                method = SCALER_STANDARD
+                reason = "Near-normal — mean/std reliable"
+            else:
+                method = SCALER_ROBUST
+                reason = "Skewed — median/IQR robust"
+
+            results.append({
+                "Column": col,
+                "Skewness": skew_val,
+                "Min": min_val,
+                "Max": max_val,
+                "Std": std_val,
+                "Method": method,
+                "Reason": reason,
+            })
+
+        return results
+
+    @staticmethod
+    def apply_feature_scaling(
+        df: pd.DataFrame,
+        candidates: Optional[List[Dict[str, Any]]] = None,
+    ) -> pd.DataFrame:
+        """
+        Scale numeric features using auto-selected method per column.
+
+        Methods (pure NumPy — no sklearn dependency):
+          - **StandardScaler**: ``(x - μ) / σ`` — centres on mean,
+            scales by standard deviation.
+          - **RobustScaler**: ``(x - median) / IQR`` — centres on median,
+            scales by inter-quartile range. Robust to remaining outliers
+            that were protected by Safe Zones in Step 5.
+
+        Binary / one-hot columns (≤ 2 unique values) are automatically
+        excluded from scaling.
+
+        Args:
+            df:         Input DataFrame (modified in-place for performance).
+            candidates: Output of ``get_scaling_preview()``.
+                        When ``None``, candidates are auto-detected.
+
+        Returns:
+            DataFrame with scaled numeric columns.
+        """
+        if candidates is None:
+            candidates = PreprocessingEngine.get_scaling_preview(df)
+
+        if not candidates:
+            return df
+
+        for candidate in candidates:
+            col = candidate["Column"]
+            method = candidate["Method"]
+
+            if col not in df.columns:
+                continue
+
+            non_null = df[col].notna()
+            if not non_null.any():
+                continue
+
+            # Ensure float dtype before scaling (int64 → float64)
+            if pd.api.types.is_integer_dtype(df[col]):
+                df[col] = df[col].astype("float64")
+
+            values = df.loc[non_null, col].values.astype(float)
+
+            if method == SCALER_STANDARD:
+                mu = float(np.mean(values))
+                sigma = float(np.std(values, ddof=1))
+                if sigma == 0:
+                    continue  # constant column — skip
+                df.loc[non_null, col] = (values - mu) / sigma
+
+            elif method == SCALER_ROBUST:
+                median = float(np.median(values))
+                q1 = float(np.percentile(values, 25))
+                q3 = float(np.percentile(values, 75))
+                iqr = q3 - q1
+                if iqr == 0:
+                    continue  # zero IQR — skip
+                df.loc[non_null, col] = (values - median) / iqr
+
+        return df
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 10. OUTLIER PREVIEW (shared between preview panel & pipeline executor)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    #: Maps human-readable method name → (detection_key, treatment_method, display_label)
+    METHOD_INFO: Dict[str, tuple] = {
+        "Z-Score":          ("zscore",          "zscore_capping",          "Z-Score Cap"),
+        "IQR":              ("iqr",             "iqr_capping",             "IQR Cap"),
+        "Modified Z-Score": ("modified_zscore", "modified_zscore_capping", "Modified Z-Score Cap"),
+    }
+
+    @staticmethod
+    def compute_outlier_preview_row(
+        df: pd.DataFrame,
+        col: str,
+        safe_zones: dict,
+    ) -> Dict[str, Any] | None:
+        """
+        Compute a single outlier-preview row for one numeric column.
+
+        **Single source of truth** used by both:
+          - ``render_detail_panel``  (Step 5 preview via UiComponents)
+          - ``_run_pipeline``       (live execution)
+
+        Algorithm:
+          1. Auto-select detection method by skewness (evaluate_outlier_method).
+          2. Run the detection mask function to find statistical outliers.
+          3. Apply ``_apply_safe_zone_mask`` to exclude values inside safe zones.
+          4. Count true outliers (statistical AND outside safe zone).
+          5. Determine the planned "Action" label.
+
+        Args:
+            df:         Working DataFrame.
+            col:        Numeric column name.
+            safe_zones: Admin-configured safe-zone bounds from ``_get_safe_zones()``.
+
+        Returns:
+            Dict with keys: Column, Min, Max, Skewness, Auto Method, detect_key,
+            treatment_method, Outliers Detected, % Outlier, Action, has_safe_zone.
+            Returns ``None`` if the column has fewer than 3 non-null values.
+        """
+        from modules.core.audit_engine import (
+            _apply_safe_zone_mask,
+            _OUTLIER_METHODS,
+            compute_skewness,
+            evaluate_outlier_method,
+            default_outlier_threshold,
+        )
+
+        series = df[col].dropna()
+        if len(series) < 3:
+            return None
+
+        rec         = evaluate_outlier_method(series)
+        skew_val    = rec["skewness"]
+        method_name = rec["method"]  # "Z-Score" | "IQR" | "Modified Z-Score"
+
+        detect_key, treatment_method, base_action = (
+            PreprocessingEngine.METHOD_INFO.get(
+                method_name, ("iqr", "iqr_capping", "IQR Cap"),
+            )
+        )
+
+        # Method-aware threshold — consistent with data_audit page
+        threshold = default_outlier_threshold(detect_key)
+
+        # Statistical outlier detection
+        compute_fn = _OUTLIER_METHODS.get(detect_key, _OUTLIER_METHODS["iqr"])
+        stat_mask, _ = compute_fn(series.values, threshold)
+
+        # Safe-zone filtering — values inside the zone are protected
+        safe_mask     = _apply_safe_zone_mask(series.values, col)
+        target_key    = col.strip().lower().replace(" ", "_")
+        has_safe_zone = any(
+            zk.strip().lower().replace(" ", "_") == target_key
+            for zk in safe_zones
+        )
+
+        final_mask      = stat_mask & safe_mask
+        outlier_count   = int(final_mask.sum())
+        raw_stat_count  = int(stat_mask.sum())
+        total_rows      = len(series)
+        pct_outlier     = round(outlier_count / total_rows * 100, 2) if total_rows > 0 else 0.0
+
+        # 🛡 badge only when Safe Zone actually filtered out some raw outliers.
+        safe_zone_active = has_safe_zone and raw_stat_count > 0
+        if outlier_count == 0:
+            action = f"{ACTION_NO_TREATMENT}  🛡" if safe_zone_active else ACTION_NO_TREATMENT
+        else:
+            action = f"{base_action}  🛡" if safe_zone_active else base_action
+
+        return {
+            "Column":            col,
+            "Min":               round(float(series.min()), 2),
+            "Max":               round(float(series.max()), 2),
+            "Skewness":          skew_val,
+            "Auto Method":       method_name,
+            "detect_key":        detect_key,
+            "treatment_method":  treatment_method,
+            "Outliers Detected": outlier_count,
+            "% Outlier":         pct_outlier,
+            "Action":            action,
+            "has_safe_zone":     has_safe_zone,
+        }
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 11. PIPELINE STEP DEFINITIONS (shared config for sidebar & detail panel)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    PIPELINE_STEP_DEFS: list = [
+        {
+            "num": 1,
+            "title": "Standardize & Type Cast",
+            "desc": "Trim, normalize casing, convert dtypes",
+            "icon": ":material/tune:",
+            "color": STEP_COLORS[1],
+        },
+        {
+            "num": 2,
+            "title": "Noise Cleaning",
+            "desc": "Replace noise & placeholder values with NaN",
+            "icon": ":material/delete:",
+            "color": STEP_COLORS[2],
+        },
+        {
+            "num": 3,
+            "title": "Duplicate Removal",
+            "desc": "Detect & remove exact duplicate rows",
+            "icon": ":material/content_copy:",
+            "color": STEP_COLORS[3],
+        },
+        {
+            "num": 4,
+            "title": "Missing Value Imputation",
+            "desc": "Imputation: mean / median / mode",
+            "icon": ":material/healing:",
+            "color": STEP_COLORS[4],
+        },
+        {
+            "num": 5,
+            "title": "Outlier Treatment",
+            "desc": "Auto-detect & cap statistical outliers",
+            "icon": ":material/square_foot:",
+            "color": STEP_COLORS[5],
+        },
+        {
+            "num": 6,
+            "title": "Log Transformation",
+            "desc": "Reduce skewness via log1p / Yeo-Johnson",
+            "icon": ":material/functions:",
+            "color": STEP_COLORS[6],
+        },
+        {
+            "num": 7,
+            "title": "Binning & Mapping",
+            "desc": "Discretize numerics & group categories",
+            "icon": ":material/category:",
+            "color": STEP_COLORS[7],
+        },
+        {
+            "num": 8,
+            "title": "Feature Encoding",
+            "desc": "Encode categoricals to numeric (Label + One-Hot)",
+            "icon": ":material/label:",
+            "color": STEP_COLORS[8],
+        },
+        {
+            "num": 9,
+            "title": "Feature Scaling",
+            "desc": "Normalize numeric features via auto-selected scaler",
+            "icon": ":material/straighten:",
+            "color": STEP_COLORS[9],
+        },
+    ]

@@ -2,7 +2,9 @@
 overview.py — Overview Dashboard Page
 """
 
+import time
 import streamlit as st
+import streamlit.components.v1 as components
 from modules.ui import overview_header, workspace_status, file_inventory, preview_panel, feature_navigation
 from modules.utils.localization import get_text
 
@@ -45,9 +47,6 @@ def main():
 
     # --- AUTO-SCROLL LOGIC ---
     if st.session_state.get('scroll_to_modules', False):
-        import streamlit.components.v1 as components
-        import time
-
         components.html(f"""
             <script>
                 setTimeout(function() {{

@@ -242,6 +242,11 @@ STRINGS = {
         "rec_zscore": "Data is symmetric (|skew| < 0.5). Z-Score is recommended.",
         "rec_iqr": "Data is moderately skewed. IQR is recommended.",
         "rec_mod_z": "Data is highly skewed (|skew| > 1.0). Modified Z-Score is recommended.",
+        "rec_mod_z_fallback_iqr": "Data is highly skewed (|skew| > 1.0) but MAD = 0 (≥50% identical values). Modified Z-Score cannot compute — falling back to IQR.",
+        "rec_zero_spread": "Data is highly skewed (|skew| > 1.0) but both MAD = 0 and IQR = 0 (≥50% identical values). Statistical outlier detection cannot compute meaningful fences.",
+        "zero_spread_title": "Statistical Detection Not Applicable",
+        "zero_spread_detail": "Both IQR and MAD equal zero because the majority of values are identical. No statistical method (IQR, Z-Score, Modified Z-Score) can compute meaningful boundaries for this distribution.",
+        "zero_spread_suggestion": "Consider using domain-specific rules or Admin Safe Zones to define acceptable ranges for this column.",
         "safe_zone_outlier_note": "Values within safe zones are trusted and ignored.",
         # Output text values for Audit Engine (Suggestions & Matrix)
         "sug_drop_impute": "Drop column or impute",
@@ -270,6 +275,7 @@ STRINGS = {
         "compose_outliers_iqr": "Outlier Flags (IQR)",
         "compose_inconsistencies": "Inconsistencies",
         "compose_noise_values": "Noise Values",
+        "compose_low_variance": "Low-Variance Columns",
 
         # ==========================================================================
         # PREPROCESSING & FEATURE ENGINEERING
@@ -472,6 +478,20 @@ STRINGS = {
         "corr_moderate": "Moderate 0.4≤|r|<0.7 — {n} pairs",
         "corr_weak": "Weak |r|<0.4 — {n} pairs",
         "audit_download_pdf": ":material/picture_as_pdf: Download PDF Report",
+        # --- Data Audit: section headers & tab labels ---
+        "audit_dataset_intro_title": "Dataset Introduction",
+        "audit_key_issues_title": "Key Issues Identified",
+        "audit_n_issues_found": "{n} issue{s} found",
+        "audit_no_issues": "No Issues Detected",
+        "audit_all_clear": "All quality checks passed. The dataset appears clean and ready for analysis.",
+        "audit_no_missing": "No missing values detected in the dataset.",
+        "audit_no_duplicates": "No duplicate rows detected in the dataset.",
+        "audit_cat_frequency_title": "Category Frequency",
+        "audit_no_cat_cols": "No categorical columns available.",
+        "audit_tab_intro": ":material/info: Dataset Introduction",
+        "audit_tab_quality": ":material/pie_chart: Quality Issues",
+        "audit_tab_profiling": ":material/table_chart: Statistical Profiling",
+        "audit_tab_charts": ":material/bar_chart: Diagnostic Charts",
 
         # --- Data Summary Table ---
         "audit_data_summary_title": "Statistical Overview",

@@ -216,10 +216,11 @@ class UiComponents:
 
     @staticmethod
     def workspace_status(active_file):
-        """Renders the Workspace Status and Data Inventory bars."""
+        """Renders the Workspace Status bar."""
+        lang = _get_current_lang()
         st.markdown(f"""
             <div class="status-bar" style="background: linear-gradient(90deg, rgba(242, 112, 36, 0.15) 0%, rgba(242, 112, 36, 0.05) 100%); border: 1px solid rgba(242, 112, 36, 0.2);">
-            <span class="status-label" style="color: var(--accent-orange);">Current Workspace:</span>
+            <span class="status-label" style="color: var(--accent-orange);">{get_text('current_workspace', lang)}:</span>
             <span class="status-value" style="color: var(--text-main); font-weight: 700;">{active_file}</span>
         </div>
         """, unsafe_allow_html=True)
@@ -389,12 +390,13 @@ class UiComponents:
             metrics = compute_dataset_metrics(df)
             # Container with Glassmorphism
             with st.container():
-                # Header
+                # Header — icon from centralized registry
+                file_icon = get_icon('file_text', 20, 'var(--accent-blue)')
                 st.markdown(f"""
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                     <div style="display:flex; align-items:center; gap:12px;">
                         <div style="background:rgba(59, 130, 246, 0.2); width:42px; height:42px; border-radius:10px; display:flex; align-items:center; justify-content:center;">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                            {file_icon}
                         </div>
                         <div>
                             <div style="color: var(--text-secondary); font-size: 0.7rem; text-transform:uppercase; letter-spacing:1px; font-weight:700;">{get_text('preview_dataset', lang)}</div>
@@ -412,8 +414,8 @@ class UiComponents:
                 with m4: UiComponents.metric_card(get_text('duplicates', lang),   f"{metrics['duplicates']}",      glow="red"   if metrics['duplicates'] > 0  else "green")
                 with m5: UiComponents.metric_card(get_text('missing_data', lang), f"{metrics['missing_pct']:.1f}%", glow="red"  if metrics['missing_pct'] > 0 else "green")
                 st.markdown("<div style='margin-bottom: 24px;'></div>", unsafe_allow_html=True)
-                # Tabs
-                tab1, tab2 = st.tabs(["Data Preview", "Column Analysis"])
+                # Tabs — localized labels
+                tab1, tab2 = st.tabs([get_text('data_preview', lang), get_text('column_analysis', lang)])
                 with tab1:
                     st.dataframe(df.head(10), use_container_width=True, height=350)
                 with tab2:
@@ -437,7 +439,53 @@ class UiComponents:
         - Research Objectives column
         All text sourced from localization, styles from styles.py.
         """
+        import base64, os
         t = lambda key: get_text(key, lang)
+
+        # -- Load card background images as base64 data URIs --
+        ASSETS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets")
+        OBJ_BG_FILES = [
+            "obj_income_drivers.png",
+            "obj_demographic_profile.png",
+            "obj_education_earnings.png",
+            "obj_work_intensity.png",
+            "obj_occupation_income.png",
+        ]
+        bg_data_uris = []
+        for bg_file in OBJ_BG_FILES:
+            bg_path = os.path.join(ASSETS_DIR, bg_file)
+            try:
+                with open(bg_path, "rb") as fp:
+                    encoded = base64.b64encode(fp.read()).decode("ascii")
+                bg_data_uris.append(f"data:image/png;base64,{encoded}")
+            except Exception:
+                bg_data_uris.append("")
+
+        # -- Build per-card background CSS --
+        obj_bg_css = ""
+        for idx, data_uri in enumerate(bg_data_uris, start=1):
+            if data_uri:
+                obj_bg_css += f"""
+                .obj-card-bg-{idx}::after {{
+                    content: '';
+                    position: absolute;
+                    top: 0; right: 0; bottom: 0;
+                    width: 55%;
+                    background: url('{data_uri}') right center / cover no-repeat;
+                    opacity: 0.15;
+                    pointer-events: none;
+                    border-radius: 12px;
+                    mask-image: linear-gradient(to left, rgba(0,0,0,1) 10%, transparent 95%);
+                    -webkit-mask-image: linear-gradient(to left, rgba(0,0,0,1) 10%, transparent 95%);
+                    transition: opacity 0.3s ease;
+                }}
+                .obj-card-bg-{idx}:hover::after {{
+                    opacity: 0.28;
+                }}
+                """
+        if obj_bg_css:
+            st.markdown(f"<style>{obj_bg_css}</style>", unsafe_allow_html=True)
+
         # -- Highlighted keyword sets (based on reference image) --
         QUANT_HL  = {"Age", "Hours_per_Week"}
         CAT_HL    = {"Occupation", "Education", "Marital_Status", "Sex"}
@@ -501,35 +549,35 @@ class UiComponents:
             <div class="col-title">{t('overview_col_objectives')}</div>
         </div>
         <div class="column-boxes">
-            <div class="obj-card-premium">
+            <div class="obj-card-premium obj-card-bg-1">
                 <div class="obj-icon-wrap">{icon_bar_chart}</div>
                 <div class="obj-content">
                     <div class="obj-title">{t('overview_obj_grp1_1_title')}</div>
                     <div class="obj-desc">{t('overview_obj_grp1_1_desc')}</div>
                 </div>
             </div>
-            <div class="obj-card-premium">
+            <div class="obj-card-premium obj-card-bg-2">
                 <div class="obj-icon-wrap">{icon_zap}</div>
                 <div class="obj-content">
                     <div class="obj-title">{t('overview_obj_grp1_2_title')}</div>
                     <div class="obj-desc">{t('overview_obj_grp1_2_desc')}</div>
                 </div>
             </div>
-            <div class="obj-card-premium">
+            <div class="obj-card-premium obj-card-bg-3">
                 <div class="obj-icon-wrap">{icon_clock}</div>
                 <div class="obj-content">
                     <div class="obj-title">{t('overview_obj_grp1_3_title')}</div>
                     <div class="obj-desc">{t('overview_obj_grp1_3_desc')}</div>
                 </div>
             </div>
-            <div class="obj-card-premium">
+            <div class="obj-card-premium obj-card-bg-4">
                 <div class="obj-icon-wrap">{icon_heart_pulse}</div>
                 <div class="obj-content">
                     <div class="obj-title">{t('overview_obj_grp1_4_title')}</div>
                     <div class="obj-desc">{t('overview_obj_grp1_4_desc')}</div>
                 </div>
             </div>
-            <div class="obj-card-premium">
+            <div class="obj-card-premium obj-card-bg-5">
                 <div class="obj-icon-wrap">{icon_briefcase}</div>
                 <div class="obj-content">
                     <div class="obj-title">{t('overview_obj_grp1_5_title')}</div>
@@ -595,8 +643,6 @@ class UiComponents:
     # AUDIT PAGE COMPONENTS
     # ==============================================================================
 
-    # Backward-compatible alias — kept so any lingering imports of audit_metric still work.
-    audit_metric = metric_card
     @staticmethod
     def scan_animation(message=None):
         """Renders the scanning / pulse progress animation."""
@@ -632,8 +678,11 @@ class UiComponents:
         if series is not None:
             smart_eval = audit_engine.evaluate_outlier_method(series, lang)
             outlier_method = smart_eval["method"]
-            method_hint_keys = {"IQR": "hint_iqr", "Z-Score": "hint_zscore", "Modified Z-Score": "hint_modified_zscore"}
             _skew_val = smart_eval.get("skewness", 0.0)
+            _is_zero_spread = smart_eval.get("zero_spread", False)
+
+            # --- Smart Recommendation note ---
+            method_hint_keys = {"IQR": "hint_iqr", "Z-Score": "hint_zscore", "Modified Z-Score": "hint_modified_zscore"}
             _note_html = (
                 '<div style="margin:4px 0 12px 0; padding:12px 16px; background:rgba(59,130,246,0.12);'
                 ' border-left:3px solid rgba(59,130,246,0.4); border-radius:0 8px 8px 0;'
@@ -648,25 +697,122 @@ class UiComponents:
                 '</div>'
             )
             st.markdown(_note_html, unsafe_allow_html=True)
-            method_map = {"IQR": "iqr", "Z-Score": "zscore", "Modified Z-Score": "modified_zscore"}
-            risk_df, total_outliers = audit_engine.get_risk_records(df, selected_col, method=method_map[outlier_method])
-            # Plot Distribution + Bell Curve Overlay + Boundaries
-            fig = visualizer.plot_outlier_distribution(series, risk_df, method=method_map[outlier_method], lang=lang)
-            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-            if not risk_df.empty:
-                st.markdown(f"""
-                    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; margin-top:14px;">
-                        <span class="status-badge badge-red">{get_text('flagged_rows', lang, count=total_outliers)}</span>
-                        <span class="status-badge badge-blue">{get_text('column_label', lang, col=selected_col)}</span>
-                        <span class="status-badge badge-green">{get_text('method_label', lang, method=outlier_method)}</span>
-                    </div>
-                """, unsafe_allow_html=True)
 
-                if total_outliers > len(risk_df):
-                    st.caption(f":material/info: Showing top {len(risk_df)} most extreme outliers of {total_outliers}.")
-                st.dataframe(risk_df, use_container_width=True, height=250, hide_index=True)
+            method_map = {"IQR": "iqr", "Z-Score": "zscore", "Modified Z-Score": "modified_zscore"}
+            method_key = method_map[outlier_method]
+            clean_vals = series.dropna()
+
+            if _is_zero_spread:
+                # --- Zero-spread: statistical detection impossible ---
+                dominant_val = clean_vals.mode().iloc[0] if not clean_vals.empty else 0
+                dominant_count = int((clean_vals == dominant_val).sum())
+                dominant_pct = round(dominant_count / len(clean_vals) * 100, 1) if len(clean_vals) > 0 else 0
+                non_dom_count = len(clean_vals) - dominant_count
+                unique_count = int(clean_vals.nunique())
+
+                _warn_html = (
+                    '<div style="margin:4px 0 12px 0; padding:12px 16px; background:rgba(245,158,11,0.10);'
+                    ' border-left:3px solid rgba(245,158,11,0.5); border-radius:0 8px 8px 0;'
+                    ' font-size:0.78rem; color:rgba(255,255,255,0.45); line-height:1.9;">'
+                    f'<b style="color:rgba(255,255,255,0.6);">⚠ {get_text("zero_spread_title", lang)}</b><br>'
+                    f'<span style="color:rgba(255,255,255,0.35);">'
+                    f'{get_text("zero_spread_detail", lang)}</span><br>'
+                    f'<b style="color:#F59E0B;">Dominant value:</b> '
+                    f'<b style="color:rgba(255,255,255,0.7);">{dominant_val:,}</b>'
+                    f' &nbsp;·&nbsp; <b style="color:#F59E0B;">{dominant_pct}%</b> of data'
+                    f' ({dominant_count:,} / {len(clean_vals):,} rows)<br>'
+                    f'<b style="color:#F59E0B;">Non-dominant values:</b> '
+                    f'<b style="color:rgba(255,255,255,0.7);">{non_dom_count:,}</b> rows'
+                    f' &nbsp;·&nbsp; <b style="color:#F59E0B;">{unique_count}</b> unique values<br>'
+                    f'<span style="color:rgba(255,255,255,0.30);">'
+                    f'{get_text("zero_spread_suggestion", lang)}</span>'
+                    '</div>'
+                )
+                st.markdown(_warn_html, unsafe_allow_html=True)
+
+                # Still render histogram for visual context (without fence lines)
+                risk_df = pd.DataFrame()
+                fig = visualizer.plot_outlier_distribution(
+                    series, risk_df, method=method_key, lang=lang,
+                    skip_fences=True,
+                )
+                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
             else:
-                _styled_status(get_text('no_outliers_detected', lang, col=selected_col, method=outlier_method))
+                # --- Normal flow: formula + detection + chart ---
+                _threshold = audit_engine.default_outlier_threshold(method_key)
+
+                if method_key == "iqr":
+                    q1_val = round(float(clean_vals.quantile(0.25)), 2)
+                    q3_val = round(float(clean_vals.quantile(0.75)), 2)
+                    iqr_val = round(q3_val - q1_val, 2)
+                    lower_val = round(q1_val - _threshold * iqr_val, 2)
+                    upper_val = round(q3_val + _threshold * iqr_val, 2)
+                    formula_html = (
+                        f'<b style="color:rgba(255,255,255,0.6);">📐 Detection Formula — IQR Method</b><br>'
+                        f'<span style="color:rgba(255,255,255,0.35);">'
+                        f'Q1 = <b style="color:#F59E0B;">{q1_val:,}</b>'
+                        f' &nbsp;·&nbsp; Q3 = <b style="color:#F59E0B;">{q3_val:,}</b>'
+                        f' &nbsp;·&nbsp; IQR = Q3 − Q1 = <b style="color:#F59E0B;">{iqr_val:,}</b></span><br>'
+                        f'<span style="color:rgba(255,255,255,0.35);">'
+                        f'Lower = Q1 − {_threshold}×IQR = <b style="color:#F59E0B;">{lower_val:,}</b>'
+                        f' &nbsp;·&nbsp; Upper = Q3 + {_threshold}×IQR = <b style="color:#F59E0B;">{upper_val:,}</b></span><br>'
+                        f'<span style="color:rgba(255,255,255,0.30);">Outlier if value &lt; {lower_val:,} or value &gt; {upper_val:,}</span>'
+                    )
+                elif method_key == "zscore":
+                    mean_val = round(float(clean_vals.mean()), 2)
+                    std_val = round(float(clean_vals.std(ddof=1)), 2)
+                    formula_html = (
+                        f'<b style="color:rgba(255,255,255,0.6);">📐 Detection Formula — Z-Score Method</b><br>'
+                        f'<span style="color:rgba(255,255,255,0.35);">'
+                        f'Mean (μ) = <b style="color:#F59E0B;">{mean_val:,}</b>'
+                        f' &nbsp;·&nbsp; Std (σ) = <b style="color:#F59E0B;">{std_val:,}</b>'
+                        f' &nbsp;·&nbsp; Threshold = <b style="color:#F59E0B;">{_threshold}</b></span><br>'
+                        f'<span style="color:rgba(255,255,255,0.35);">'
+                        f'Z = |x − μ| / σ</span><br>'
+                        f'<span style="color:rgba(255,255,255,0.30);">Outlier if |Z| &gt; {_threshold} '
+                        f'(i.e. value &lt; {round(mean_val - _threshold * std_val, 2):,} '
+                        f'or value &gt; {round(mean_val + _threshold * std_val, 2):,})</span>'
+                    )
+                else:  # modified_zscore
+                    median_val = round(float(clean_vals.median()), 2)
+                    mad_val = round(float((clean_vals - clean_vals.median()).abs().median()), 2)
+                    formula_html = (
+                        f'<b style="color:rgba(255,255,255,0.6);">📐 Detection Formula — Modified Z-Score Method</b><br>'
+                        f'<span style="color:rgba(255,255,255,0.35);">'
+                        f'Median = <b style="color:#F59E0B;">{median_val:,}</b>'
+                        f' &nbsp;·&nbsp; MAD = <b style="color:#F59E0B;">{mad_val:,}</b>'
+                        f' &nbsp;·&nbsp; Threshold = <b style="color:#F59E0B;">{_threshold}</b></span><br>'
+                        f'<span style="color:rgba(255,255,255,0.35);">'
+                        f'M = 0.6745 × |x − Median| / MAD</span><br>'
+                        f'<span style="color:rgba(255,255,255,0.30);">Outlier if |M| &gt; {_threshold}</span>'
+                    )
+
+                st.markdown(
+                    f'<div style="margin:4px 0 12px 0; padding:12px 16px; background:rgba(59,130,246,0.12);'
+                    f' border-left:3px solid rgba(59,130,246,0.4); border-radius:0 8px 8px 0;'
+                    f' font-size:0.78rem; color:rgba(255,255,255,0.45); line-height:1.9;">'
+                    f'{formula_html}</div>',
+                    unsafe_allow_html=True,
+                )
+
+                risk_df, total_outliers = audit_engine.get_risk_records(df, selected_col, method=method_key)
+                # Plot Distribution + Bell Curve Overlay + Boundaries
+                fig = visualizer.plot_outlier_distribution(series, risk_df, method=method_key, lang=lang)
+                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+                if not risk_df.empty:
+                    st.markdown(f"""
+                        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; margin-top:14px;">
+                            <span class="status-badge badge-red">{get_text('flagged_rows', lang, count=total_outliers)}</span>
+                            <span class="status-badge badge-blue">{get_text('column_label', lang, col=selected_col)}</span>
+                            <span class="status-badge badge-green">{get_text('method_label', lang, method=outlier_method)}</span>
+                        </div>
+                    """, unsafe_allow_html=True)
+
+                    if total_outliers > len(risk_df):
+                        st.caption(f":material/info: Showing top {len(risk_df)} most extreme outliers of {total_outliers}.")
+                    st.dataframe(risk_df, use_container_width=True, height=250, hide_index=True)
+                else:
+                    _styled_status(get_text('no_outliers_detected', lang, col=selected_col, method=outlier_method), accent='#3B82F6')
         else:
             _styled_status("Select a column to evaluate its distribution and detect outliers.", accent='#3B82F6')
 
@@ -675,126 +821,6 @@ class UiComponents:
     # ==============================================================================
     # PREPROCESSING COMPONENTS
     # ==============================================================================
-
-    @staticmethod
-    def pipeline_card():
-        """Renders the full-width pipeline step-card grid with hover effects and tab linking."""
-        WARN = STATUS_COLORS["warning"]["hex"]
-        INFO = STATUS_COLORS["neutral"]["hex"]
-        OK   = STATUS_COLORS["success"]["hex"]
-        PURP = STATUS_COLORS["info"]["hex"]
-        TAB_MAP = {"1": 0, "2": 0, "3": 1, "4": 1, "5": 2}
-        step_defs = [
-            ("1", "Noise to NaN",    "Replace noise & invalid entries with NaN",           WARN, "trash"),
-            ("2", "Scrub Text",         "Trim whitespace & normalize text casing",            INFO, "scissors"),
-            ("3", "Fill Missing",       "Impute nulls: median (numeric) / mode (categorical)", OK,  "bandaid"),
-            ("4", "Drop Duplicates",    "Remove exact duplicate rows from dataset",            WARN, "copy"),
-            ("5", "Outlier Treatment",  "Auto-detect & clip outliers (IQR / Z-Score)",         PURP, "ruler"),
-        ]
-
-        hover_css = (
-            '<style>'
-            '.pp-step-card{'
-            '  transition:all 0.25s cubic-bezier(0.4,0,0.2,1);cursor:pointer;'
-            '}'
-            '.pp-step-card:hover{'
-            '  transform:translateY(-6px) scale(1.03);'
-            '  box-shadow:0 12px 32px rgba(0,0,0,0.35),0 0 24px var(--glow-color);'
-            '  border-color:var(--glow-color) !important;z-index:2;'
-            '}'
-            '.pp-step-card:active{'
-            '  transform:translateY(-2px) scale(1.01);'
-            '}'
-            '</style>'
-        )
-
-        def _card(num, title, desc, color, icon_key):
-            ico = get_icon(icon_key, 20, color)
-            rgb = _pp_hex(color)
-            tab_idx = str(TAB_MAP.get(num, 0))
-            js = (
-                "(function(){"
-                "var tabs=window.parent.document.querySelectorAll('[data-baseweb=tab]');" 
-                "if(tabs[" + tab_idx + "]){"
-                "tabs[" + tab_idx + "].click();"
-                "setTimeout(function(){"
-                "var h=window.parent.document.querySelector('#pp-detail-anchor');" 
-                "if(h)h.scrollIntoView({behavior:'smooth',block:'start'});" 
-                "},300);}"
-                "})()"
-            )
-            tpl = (
-                '<div class="pp-step-card" style="--glow-color:rgba(__RGB__,0.5);'
-                'flex:1;min-width:0;padding:20px 14px 18px;'
-                'background:rgba(__RGB__,0.05);'
-                'border:1px solid rgba(__RGB__,0.18);border-radius:14px;'
-                'display:flex;flex-direction:column;align-items:center;'
-                'text-align:center;gap:10px;position:relative;"'
-                ' onclick="' + js + '">'
-                '<div style="width:44px;height:44px;border-radius:50%;'
-                'background:rgba(__RGB__,0.12);border:1.5px solid rgba(__RGB__,0.35);'
-                'display:flex;align-items:center;justify-content:center;'
-                'box-shadow:0 0 18px rgba(__RGB__,0.15);">'
-                '__ICO__</div>'
-                '<div style="font-size:0.58rem;font-weight:800;color:__COL__;'
-                'text-transform:uppercase;letter-spacing:1.2px;'
-                'background:rgba(__RGB__,0.15);border-radius:20px;'
-                'padding:2px 8px;">STEP __NUM__</div>'
-                '<div style="font-size:0.85rem;font-weight:700;color:white;'
-                'line-height:1.3;">__TITLE__</div>'
-                '<div style="font-size:0.72rem;color:rgba(255,255,255,0.4);'
-                'line-height:1.5;padding:0 4px;">__DESC__</div>'
-                '</div>'
-            )
-            return (tpl
-                    .replace('__RGB__', rgb).replace('__ICO__', ico)
-                    .replace('__COL__', color).replace('__NUM__', num)
-                    .replace('__TITLE__', title).replace('__DESC__', desc))
-        def _connector():
-            return (
-                '<div style="display:flex;align-items:center;'
-                'flex-shrink:0;padding-top:22px;">'
-                '<div style="height:1px;width:20px;background:'
-                'linear-gradient(90deg,rgba(255,255,255,0.05),'
-                'rgba(255,255,255,0.18),rgba(255,255,255,0.05));">'
-                '</div>'
-                '<span style="color:rgba(255,255,255,0.18);'
-                'font-size:0.55rem;">&#9654;</span>'
-                '<div style="height:1px;width:20px;background:'
-                'linear-gradient(90deg,rgba(255,255,255,0.05),'
-                'rgba(255,255,255,0.18),rgba(255,255,255,0.05));">'
-                '</div>'
-                '</div>'
-            )
-
-        parts = []
-        for i, (num, title, desc, color, icon_key) in enumerate(step_defs):
-            parts.append(_card(num, title, desc, color, icon_key))
-            if i < len(step_defs) - 1:
-                parts.append(_connector())
-        zap_icon = get_icon('zap', 18, WARN)
-        header_html = (
-            '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">'
-            + '<span style="color:' + WARN + ';display:inline-flex;align-items:center;">'
-            + zap_icon + '</span>'
-            + '<span style="font-size:1rem;font-weight:700;color:white;">Fixed Preprocessing Pipeline</span>'
-            '<span style="background:rgba(255,255,255,0.08);border-radius:20px;'
-            'font-size:0.65rem;padding:2px 9px;font-weight:600;'
-            'letter-spacing:0.6px;">5 STEPS</span></div>'
-        )
-        subtitle_html = (
-            '<div style="font-size:0.78rem;color:rgba(255,255,255,0.35);margin-bottom:18px;">'
-            'Automated, sequential data cleaning &mdash; click any step to jump to its details.</div>'
-        )
-        steps_row = (
-            '<div style="display:flex;align-items:stretch;gap:0;width:100%;margin-bottom:24px;">'
-            + ''.join(parts) + '</div>'
-        )
-        st.markdown(
-            hover_css + '<div style="margin-top:16px;">'
-            + header_html + subtitle_html + steps_row + '</div>',
-            unsafe_allow_html=True,
-        )
 
     @staticmethod
     def pipeline_done_banner(res_file, rows_before, rows_after, dupes_dropped, stats=None):
@@ -847,7 +873,7 @@ class UiComponents:
             'Preprocessing Complete!'
             f'<span style="background:rgba({rgb_ok},0.12);border-radius:12px;font-size:0.6rem;'
             f'padding:2px 10px;font-weight:600;color:{OK};letter-spacing:0.5px;'
-            'margin-left:4px;">8 / 8 STEPS</span>'
+            'margin-left:4px;">9 / 9 STEPS</span>'
             '</div>'
 
             # ── Metric cards row (3 cards) ────────────────────────────────
@@ -1250,6 +1276,778 @@ class UiComponents:
                 ), unsafe_allow_html=True)
         else:
             _styled_status("No numeric columns had enough data for outlier analysis.", accent='#3B82F6')
+
+    # --------------------------------------------------------------------------
+    # PREPROCESSING — PIPELINE SIDEBAR & DETAIL PANEL
+    # --------------------------------------------------------------------------
+
+    @staticmethod
+    def render_pipeline_sidebar(active_step: int) -> int:
+        """Render the vertical pipeline steps using ``st.radio`` + CSS styling.
+
+        Imports ``PIPELINE_STEP_DEFS`` from ``PreprocessingEngine`` (Core layer)
+        to keep pipeline configuration centralized.
+
+        Returns:
+            The 1-based step number currently selected.
+        """
+        from modules.core.preprocessing_engine import (
+            PreprocessingEngine,
+            BINNING_TYPE_NUMERIC, BINNING_TYPE_CATEGORY,
+        )
+        step_defs = PreprocessingEngine.PIPELINE_STEP_DEFS
+
+        # --- Base CSS for radio options as pipeline step cards ---
+        _radio_base_css = """
+        <style>
+        /* --- Hide radio group label --- */
+        div[data-testid="stRadio"] > label { display:none !important; }
+        div[data-testid="stRadio"],
+        div[data-testid="stRadio"] > div {
+            width: 100% !important;
+        }
+        div[data-testid="stRadio"] > div[role="radiogroup"] {
+            gap: 0 !important;
+            display: flex !important;
+            flex-direction: column !important;
+            width: 100% !important;
+            align-items: stretch !important;
+            margin-top: -8px !important;
+        }
+
+        /* --- Each radio option → full-width card --- */
+        div[data-testid="stRadio"] > div[role="radiogroup"] > label {
+            background: rgba(255,255,255,0.025) !important;
+            border: 1px solid rgba(255,255,255,0.07) !important;
+            border-radius: 10px !important;
+            padding: 12px 16px !important;
+            cursor: pointer !important;
+            transition: all 0.3s cubic-bezier(0.4,0,0.2,1) !important;
+            margin: 0 !important;
+            width: 100% !important;
+            min-width: 100% !important;
+            box-sizing: border-box !important;
+            display: flex !important;
+            position: relative !important;
+        }
+
+        /* --- DATA PREPROCESSING section header above step 1 --- */
+        div[data-testid="stRadio"] > div[role="radiogroup"] > label:nth-child(1) {
+            margin-top: 20px !important;
+        }
+        div[data-testid="stRadio"] > div[role="radiogroup"] > label:nth-child(1)::before {
+            content: 'DATA PREPROCESSING' !important;
+            display: block !important;
+            position: absolute !important;
+            top: -22px !important;
+            left: 0 !important;
+            font-size: 0.55rem !important;
+            font-weight: 800 !important;
+            letter-spacing: 1.5px !important;
+            color: rgba(59,130,246,0.6) !important;
+            white-space: nowrap !important;
+        }
+
+        /* --- Hide native radio circle --- */
+        div[data-testid="stRadio"] > div[role="radiogroup"] > label > div:first-child {
+            display: none !important;
+        }
+
+        /* --- Label text --- */
+        div[data-testid="stRadio"] > div[role="radiogroup"] > label p {
+            font-size: 0.8rem !important;
+            font-weight: 600 !important;
+            letter-spacing: 0.3px !important;
+            color: rgba(255,255,255,0.45) !important;
+        }
+
+        /* --- Down arrow connectors between radio options (skip between 5→6) --- */
+        div[data-testid="stRadio"] > div[role="radiogroup"] > label:not(:last-child):not(:nth-child(5))::after {
+            content: '▼' !important;
+            display: block !important;
+            position: absolute !important;
+            bottom: -12px !important;
+            left: 50% !important;
+            transform: translateX(-50%) !important;
+            font-size: 0.5rem !important;
+            color: rgba(255,255,255,0.12) !important;
+            z-index: 2 !important;
+            line-height: 1 !important;
+        }
+
+        /* --- Ensure arrows also show between steps 6→7 and 7→8 within Feature Prep --- */
+        div[data-testid="stRadio"] > div[role="radiogroup"] > label:not(:last-child) {
+            margin-bottom: 16px !important;
+        }
+
+        /* --- Feature Preparation section divider before step 6 --- */
+        div[data-testid="stRadio"] > div[role="radiogroup"] > label:nth-child(5) {
+            margin-bottom: 0 !important;
+        }
+        div[data-testid="stRadio"] > div[role="radiogroup"] > label:nth-child(5)::after {
+            display: none !important;
+        }
+        div[data-testid="stRadio"] > div[role="radiogroup"] > label:nth-child(6) {
+            margin-top: 32px !important;
+        }
+        div[data-testid="stRadio"] > div[role="radiogroup"] > label:nth-child(6)::before {
+            content: 'FEATURE PREPARATION' !important;
+            display: block !important;
+            position: absolute !important;
+            top: -24px !important;
+            left: 0 !important;
+            font-size: 0.55rem !important;
+            font-weight: 800 !important;
+            letter-spacing: 1.5px !important;
+            color: rgba(127,177,53,0.6) !important;
+            white-space: nowrap !important;
+        }
+
+        </style>
+        """
+        st.markdown(_radio_base_css, unsafe_allow_html=True)
+
+        # --- Per-step accent colors for hover & checked states ---
+        _per_step_rules = []
+        _nth = 'div[data-testid="stRadio"] > div[role="radiogroup"] > label'
+        for idx, step_def in enumerate(step_defs, start=1):
+            hex_color = step_def["color"]
+            r, g, b = int(hex_color[1:3], 16), int(hex_color[3:5], 16), int(hex_color[5:7], 16)
+            _per_step_rules.append(f"""
+            {_nth}:nth-child({idx}):hover {{
+                background: rgba({r},{g},{b},0.06) !important;
+                border-color: rgba({r},{g},{b},0.25) !important;
+                transform: translateX(3px) !important;
+                box-shadow: 0 0 12px rgba({r},{g},{b},0.08) !important;
+            }}
+            {_nth}:nth-child({idx}):hover p {{
+                color: rgba(255,255,255,0.85) !important;
+            }}
+            {_nth}:nth-child({idx}):has(input:checked) {{
+                background: rgba({r},{g},{b},0.10) !important;
+                border: 1.5px solid rgba({r},{g},{b},0.5) !important;
+                box-shadow: 0 0 20px rgba({r},{g},{b},0.18),
+                            inset 0 0 20px rgba({r},{g},{b},0.04) !important;
+                transform: translateX(3px) !important;
+            }}
+            {_nth}:nth-child({idx}):has(input:checked) p {{
+                color: rgba(255,255,255,0.95) !important;
+                font-weight: 700 !important;
+            }}
+            """)
+        st.markdown(f'<style>{" ".join(_per_step_rules)}</style>', unsafe_allow_html=True)
+
+        # Build radio options — professional numbered format
+        options = [
+            f"0{s['num']}  —  {s['title']}" for s in step_defs
+        ]
+
+        selected = st.radio(
+            "Pipeline Steps",
+            options,
+            index=active_step - 1,
+            label_visibility="collapsed",
+            key="pp_step_radio",
+        )
+
+        # Map selection back to step number
+        return options.index(selected) + 1 if selected else active_step
+
+    @staticmethod
+    def render_detail_panel(
+        step: int,
+        df: pd.DataFrame,
+        compute_fn,
+    ) -> None:
+        """Render the right-panel detail view for the selected pipeline step.
+
+        Imports ``PIPELINE_STEP_DEFS`` from ``PreprocessingEngine`` (Core layer).
+        Uses module-level UI helpers (``_pp_hex``, ``_pp_key``, ``_pp_card``).
+        """
+        from modules.core.audit_engine import (
+            _compute_noise_mask, _get_cat_columns, _get_safe_zones,
+            compute_skewness, recommend_fill_strategy,
+            evaluate_outlier_method, default_outlier_threshold,
+            _OUTLIER_METHODS,
+        )
+        from modules.core.preprocessing_engine import (
+            PreprocessingEngine,
+            ENC_LABEL, ENC_ONEHOT, ENC_DROP_REDUNDANT,
+            BINNING_TYPE_NUMERIC, BINNING_TYPE_CATEGORY,
+            LOG_METHOD_LOG1P, LOG_METHOD_YJ,
+        )
+
+        step_defs = PreprocessingEngine.PIPELINE_STEP_DEFS
+        step_info = step_defs[step - 1]
+        rgb = _pp_hex(step_info["color"])
+        col_hex = step_info["color"]
+
+        # ── Consistent section header ─────────────────────────────────────
+        st.markdown(
+            f'<div style="margin-bottom:24px; padding:20px 22px;'
+            f' background:linear-gradient(135deg, rgba({rgb},0.08) 0%, rgba({rgb},0.02) 100%);'
+            f' border:1px solid rgba({rgb},0.12); border-left:3px solid {col_hex};'
+            f' border-radius:0 14px 14px 0;">'
+            f'<div style="display:flex; align-items:center; gap:14px;">'
+            f'<div style="width:40px; height:40px; border-radius:10px;'
+            f' background:rgba({rgb},0.15); border:1px solid rgba({rgb},0.3);'
+            f' display:flex; align-items:center; justify-content:center;'
+            f' font-size:1.1rem; font-weight:800; color:{col_hex};'
+            f' flex-shrink:0;">{step_info["num"]}</div>'
+            f'<div>'
+            f'<div style="font-size:0.58rem; font-weight:800; color:{col_hex};'
+            f' text-transform:uppercase; letter-spacing:1.5px;'
+            f' margin-bottom:2px; opacity:0.8;">Step {step_info["num"]}</div>'
+            f'<div style="font-size:1.15rem; font-weight:700;'
+            f' color:rgba(255,255,255,0.95); letter-spacing:-0.3px;'
+            f' line-height:1.3;">{step_info["title"]}</div>'
+            f'</div></div>'
+            f'<p style="font-size:0.82rem; color:rgba(255,255,255,0.4);'
+            f' margin:10px 0 0 54px; line-height:1.5;">{step_info["desc"]}</p>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+        # ── Helper: info box ──────────────────────────────────────────────
+        def _info_box(html_content: str, accent: str = col_hex) -> None:
+            a_rgb = _pp_hex(accent)
+            st.markdown(
+                f'<div style="margin:4px 0 12px 0; padding:12px 16px;'
+                f' background:rgba({a_rgb},0.08);'
+                f' border-left:3px solid rgba({a_rgb},0.4);'
+                f' border-radius:0 8px 8px 0;'
+                f' font-size:0.78rem; color:rgba(255,255,255,0.45); line-height:1.9;">'
+                f'{html_content}</div>',
+                unsafe_allow_html=True,
+            )
+
+        # ── Helper: metric row ────────────────────────────────────────────
+        def _metric_row(items: list) -> None:
+            """Render a horizontal row of metric cards. items = [(label, value, color), ...]."""
+            cards = ""
+            for label, value, color in items:
+                c_rgb = _pp_hex(color)
+                cards += (
+                    f'<div class="pp-metric-card" style="flex:1;'
+                    f' background:rgba({c_rgb},0.04);'
+                    f' border:1px solid rgba({c_rgb},0.12); border-radius:12px;'
+                    f' padding:18px 16px; text-align:center; position:relative;'
+                    f' overflow:hidden;">'
+                    f'<div style="position:absolute; top:0; left:15%; right:15%;'
+                    f' height:2px; background:linear-gradient(90deg,'
+                    f' transparent, rgba({c_rgb},0.5), transparent);"></div>'
+                    f'<div style="font-size:1.7rem; font-weight:800; color:{color};'
+                    f' line-height:1; letter-spacing:-0.5px;">{value}</div>'
+                    f'<div style="font-size:0.62rem; color:rgba(255,255,255,0.4);'
+                    f' text-transform:uppercase; letter-spacing:1px;'
+                    f' margin-top:8px; font-weight:600;">{label}</div></div>'
+                )
+            st.markdown(
+                f'<div style="display:flex; gap:12px; margin-bottom:18px;">{cards}</div>',
+                unsafe_allow_html=True,
+            )
+
+        # ── Helper: skip / all-clear card ─────────────────────────────
+        def _skip_card(text: str) -> None:
+            st.markdown(
+                f'<div style="margin:4px 0 8px 12px; padding:10px 14px;'
+                f' background:rgba({rgb},0.03);'
+                f' border-left:2px solid rgba({rgb},0.4);'
+                f' border-radius:0 8px 8px 0;'
+                f' display:flex; align-items:center; gap:10px;'
+                f' font-size:0.8rem; color:rgba(255,255,255,0.4);">'
+                f'<span style="color:rgba({rgb},0.7); font-size:0.85rem;">✓</span>'
+                f'<span>{text}</span></div>',
+                unsafe_allow_html=True,
+            )
+
+        # ── Step 1: Standardize & Type Cast ────────────────────────────────
+        if step == 1:
+            cat_cols = _get_cat_columns(df).tolist()
+
+            # ── Text issues (whitespace + casing) ─────────────────────────
+            fmt_rows = []
+            total_ws = 0
+            total_casing = 0
+            for col in cat_cols:
+                series = df[col].dropna().astype(str)
+                ws_count = int((series != series.str.strip()).sum())
+                lm: dict = {}
+                for unique_val in series.unique():
+                    lm.setdefault(unique_val.strip().lower(), []).append(unique_val)
+                casing_variants = sum(1 for vs in lm.values() if len(vs) > 1)
+                total_ws += ws_count
+                total_casing += casing_variants
+                if ws_count > 0 or casing_variants > 0:
+                    parts = []
+                    if ws_count:
+                        parts.append(f"{ws_count} whitespace")
+                    if casing_variants:
+                        parts.append(f"{casing_variants} casing groups")
+                    fmt_rows.append({"Column": col, "Issues": " | ".join(parts)})
+
+            # ── Dtype conversion candidates ───────────────────────────────
+            type_cast_rows = PreprocessingEngine.get_type_cast_preview(df)
+            n_type_casts = len(type_cast_rows)
+
+            # ── Sub-header helper ─────────────────────────────────────────
+            def _sub_header(label: str, accent: str = col_hex) -> None:
+                st.markdown(
+                    f'<div style="display:flex; align-items:center; gap:10px;'
+                    f' margin:20px 0 12px 0;">'
+                    f'<div style="width:4px; height:18px; border-radius:2px;'
+                    f' background:{accent}; flex-shrink:0;"></div>'
+                    f'<span style="font-size:1rem; font-weight:700;'
+                    f' color:rgba(255,255,255,0.85); letter-spacing:-0.2px;">'
+                    f'{label}</span></div>',
+                    unsafe_allow_html=True,
+                )
+
+            # 1a. TEXT ISSUES
+            _sub_header("Text Issues")
+            if fmt_rows:
+                _metric_row([
+                    ("Whitespace Issues", f"{total_ws:,}", col_hex),
+                    ("Casing Variants", f"{total_casing:,}", col_hex),
+                    ("Affected Columns", str(len(fmt_rows)), col_hex),
+                ])
+                st.dataframe(pd.DataFrame(fmt_rows), use_container_width=True, hide_index=True)
+                _info_box(
+                    '<b style="color:rgba(255,255,255,0.6);">Action:</b> '
+                    '<b style="color:#F59E0B;">Trim</b> leading/trailing whitespace, then '
+                    '<b style="color:#F59E0B;">normalize casing</b> by choosing the most frequent '
+                    'variant as the canonical form.'
+                )
+            else:
+                _skip_card("No whitespace or casing issues — all text fields are clean.")
+
+            # 1b. DTYPE ISSUES
+            _sub_header("Dtype Issues")
+            if type_cast_rows:
+                _metric_row([
+                    ("Type Conversions", str(n_type_casts), col_hex),
+                    ("Total Convertible", f"{sum(r['Convertible'] for r in type_cast_rows):,}", col_hex),
+                ])
+                st.dataframe(
+                    pd.DataFrame(type_cast_rows),
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Convertible": st.column_config.NumberColumn(format="%d"),
+                        "% Convertible": st.column_config.ProgressColumn(
+                            format="%.1f%%", min_value=0, max_value=100,
+                        ),
+                    },
+                )
+                _info_box(
+                    '<b style="color:rgba(255,255,255,0.6);">Action:</b> '
+                    'Strictly <b style="color:#F59E0B;">enforce data types</b> based on the '
+                    '<b style="color:#F59E0B;">Admin Data Schema</b>, falling back to auto-conversion '
+                    'only for undefined columns.'
+                )
+            else:
+                _skip_card("All column dtypes are correct — no conversion needed.")
+
+        # ── Step 2: Noise Cleaning ─────────────────────────────────────────
+        elif step == 2:
+            cat_cols = _get_cat_columns(df).tolist()
+            noise_rows = []
+            for col in cat_cols:
+                series = df[col].dropna().astype(str)
+                mask = _compute_noise_mask(series)
+                cnt = int(mask.sum())
+                if cnt > 0:
+                    noise_rows.append({
+                        "Column": col,
+                        "Affected Cells": cnt,
+                        "Examples": ", ".join(f"'{v}'" for v in series[mask].unique()[:4]),
+                    })
+            if noise_rows:
+                total_cells = sum(r["Affected Cells"] for r in noise_rows)
+                total_all_cells = len(df) * len(cat_cols)
+                noise_pct = total_cells / total_all_cells * 100 if total_all_cells else 0
+                _metric_row([
+                    ("Noise Cells", f"{total_cells:,}", col_hex),
+                    ("% Noise", f"{noise_pct:.2f}%", col_hex),
+                    ("Affected Columns", str(len(noise_rows)), col_hex),
+                ])
+                st.dataframe(
+                    pd.DataFrame(noise_rows),
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={"Affected Cells": st.column_config.NumberColumn(format="%d")},
+                )
+                _info_box(
+                    '<b style="color:rgba(255,255,255,0.6);">Action:</b> '
+                    'All noise values (<b style="color:#F59E0B;">?, N/A, --, etc.</b>) '
+                    'will be replaced with <b style="color:#F59E0B;">NaN</b> so they can be '
+                    'properly handled in <b style="color:rgba(255,255,255,0.6);">Step 4 — Imputing Missing Values</b>.'
+                )
+            else:
+                _skip_card("No noise or placeholder values detected — this step will be skipped.")
+
+        # ── Step 3: Duplicate Removal ──────────────────────────────────────
+        elif step == 3:
+            dupes = int(df.duplicated().sum())
+            total = len(df)
+            if dupes > 0:
+                pct = dupes / total * 100
+                _metric_row([
+                    ("Duplicate Rows", f"{dupes:,}", col_hex),
+                    ("Percentage", f"{pct:.1f}%", col_hex),
+                    ("Rows After Drop", f"{total - dupes:,}", col_hex),
+                ])
+                _info_box(
+                    f'<b style="color:rgba(255,255,255,0.6);">Action:</b> '
+                    f'All <b style="color:#F59E0B;">{dupes:,} duplicate rows</b> will be dropped, '
+                    f'retaining only the <b style="color:#F59E0B;">first occurrence</b> '
+                    f'of each unique record.'
+                )
+            else:
+                _skip_card("No duplicate rows found — all records are unique. This step will be skipped.")
+
+        # ── Step 4: Missing Value Handling ─────────────────────────────────
+        elif step == 4:
+            missing_cols = df.columns[df.isnull().any()].tolist()
+            if missing_cols:
+                total_rows = len(df)
+                total_missing = int(df[missing_cols].isnull().sum().sum())
+                missing_data = []
+                for mc in missing_cols:
+                    cnt = int(df[mc].isnull().sum())
+                    dtype = "Numeric" if pd.api.types.is_numeric_dtype(df[mc]) else "Categorical"
+                    skew_display = None
+                    if dtype == "Numeric":
+                        skew_display = compute_skewness(df[mc])
+                    strategy = recommend_fill_strategy(df[mc]).capitalize()
+                    missing_data.append({
+                        "Column": mc, "Type": dtype, "Missing": cnt,
+                        "% Missing": cnt / total_rows * 100,
+                        "Skewness": skew_display, "Strategy": strategy,
+                    })
+                missing_pct = total_missing / (total_rows * len(df.columns)) * 100
+                _metric_row([
+                    ("Total Missing", f"{total_missing:,}", col_hex),
+                    ("% Missing", f"{missing_pct:.2f}%", col_hex),
+                    ("Affected Columns", str(len(missing_cols)), col_hex),
+                ])
+                st.dataframe(
+                    pd.DataFrame(missing_data).sort_values("Missing", ascending=False),
+                    use_container_width=True, hide_index=True,
+                    column_config={
+                        "Missing": st.column_config.NumberColumn(format="%d"),
+                        "% Missing": st.column_config.ProgressColumn(format="%.1f%%", min_value=0, max_value=100),
+                        "Skewness": st.column_config.NumberColumn("Skewness", format="%.3f"),
+                        "Strategy": st.column_config.TextColumn("Fill Strategy"),
+                    },
+                )
+                _info_box(
+                    '<b style="color:rgba(255,255,255,0.6);">Strategy:</b> '
+                    '<b style="color:#F59E0B;">Numeric</b> → Mean (symmetric) / Median (skewed) &nbsp;·&nbsp; '
+                    '<b style="color:#F59E0B;">Categorical</b> → Mode (most frequent value)'
+                )
+            else:
+                _skip_card("No missing values in the dataset — this step will be skipped.")
+
+        # ── Step 5: Outlier Treatment ─────────────────────────────────────
+        elif step == 5:
+            numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
+            if not numeric_cols:
+                _skip_card("No numeric columns available for outlier treatment.")
+            else:
+                safe_zones = _get_safe_zones()
+                method_info = PreprocessingEngine.METHOD_INFO
+
+                rows = []
+                zero_spread_cols = []
+                for col in numeric_cols:
+                    series = df[col].dropna()
+                    if len(series) < 3:
+                        continue
+                    rec = evaluate_outlier_method(series)
+                    skew_val = rec["skewness"]
+                    method_name = rec["method"]
+                    is_zero_spread = rec.get("zero_spread", False)
+                    detect_key = method_info.get(
+                        method_name, ("iqr", "iqr_capping", "IQR Cap")
+                    )[0]
+                    threshold = default_outlier_threshold(detect_key)
+                    detect_fn = _OUTLIER_METHODS.get(detect_key, _OUTLIER_METHODS["iqr"])
+                    stat_mask, _ = detect_fn(series.values, threshold)
+                    raw_count = int(stat_mask.sum())
+
+                    real_row = compute_fn(df, col, safe_zones)
+                    action = real_row["Action"] if real_row else "No Outlier Treatment"
+                    is_int = pd.api.types.is_integer_dtype(series) or (len(series) > 0 and (series % 1 == 0).all())
+
+                    def _fmt(val):
+                        if pd.isna(val) or val == "N/A":
+                            return "N/A"
+                        # Always show Ints as plain integers, but Floats with 2 decimals
+                        if is_int and float(val).is_integer():
+                            return f"{int(val):,}"
+                        return f"{float(val):,.2f}"
+
+                    col_min = _fmt(series.min()) if len(series) > 0 else "0"
+                    col_max = _fmt(series.max()) if len(series) > 0 else "0"
+                    total_rows = len(series)
+                    pct_outlier = round(raw_count / total_rows * 100, 2) if total_rows > 0 else 0.0
+
+                    # Compute Lower / Upper Limit
+                    if is_zero_spread:
+                        lower_limit = "N/A"
+                        upper_limit = "N/A"
+                        zero_spread_cols.append(col)
+                    else:
+                        if detect_key == "iqr":
+                            q1 = float(series.quantile(0.25))
+                            q3 = float(series.quantile(0.75))
+                            iqr = q3 - q1
+                            lower_limit = _fmt(q1 - threshold * iqr)
+                            upper_limit = _fmt(q3 + threshold * iqr)
+                        elif detect_key == "zscore":
+                            mean_v = float(series.mean())
+                            std_v = float(series.std(ddof=1))
+                            lower_limit = _fmt(mean_v - threshold * std_v)
+                            upper_limit = _fmt(mean_v + threshold * std_v)
+                        else:  # modified_zscore
+                            median_v = float(series.median())
+                            mad_v = float((series - series.median()).abs().median())
+                            if mad_v > 0:
+                                lower_limit = _fmt(median_v - threshold * mad_v / 0.6745)
+                                upper_limit = _fmt(median_v + threshold * mad_v / 0.6745)
+                            else:
+                                lower_limit = "N/A"
+                                upper_limit = "N/A"
+
+                    rows.append({
+                        "Column": col,
+                        "Min": col_min,
+                        "Max": col_max,
+                        "Skewness": skew_val,
+                        "Method": method_name,
+                        "Lower Limit": lower_limit,
+                        "Upper Limit": upper_limit,
+                        "Outliers Detected": raw_count,
+                        "% Outlier": pct_outlier,
+                        "Action": action,
+                    })
+
+                total_outliers = sum(r["Outliers Detected"] for r in rows)
+                affected_cols = sum(1 for r in rows if r["Outliers Detected"] > 0)
+
+                if total_outliers > 0:
+                    _metric_row([
+                        ("Total Outliers", f"{total_outliers:,}", col_hex),
+                        ("Affected Columns", str(affected_cols), col_hex),
+                        ("Numeric Columns", str(len(numeric_cols)), col_hex),
+                    ])
+
+                    if rows:
+                        outlier_df = pd.DataFrame(rows)
+
+                        # Highlight rows where detection was not possible (zero-spread)
+                        def _highlight_zero_spread(row):
+                            if row["Lower Limit"] == "N/A":
+                                return [
+                                    "background-color: rgba(245,158,11,0.18); "
+                                    "color: rgba(245,158,11,0.7);"
+                                ] * len(row)
+                            return [""] * len(row)
+
+                        styled = outlier_df.style.apply(_highlight_zero_spread, axis=1)
+                        st.dataframe(
+                            styled,
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={
+                                "Skewness": st.column_config.NumberColumn(format="%.3f"),
+                                "Outliers Detected": st.column_config.NumberColumn(format="%d"),
+                                "% Outlier": st.column_config.NumberColumn(format="%.2f%%"),
+                            },
+                        )
+
+                    # Zero-spread note
+                    if zero_spread_cols:
+                        col_list = ", ".join(f'<b style="color:#F59E0B;">{c}</b>' for c in zero_spread_cols)
+                        st.markdown(
+                            '<div style="margin:4px 0 12px 0; padding:12px 16px; background:rgba(245,158,11,0.10);'
+                            ' border-left:3px solid rgba(245,158,11,0.5); border-radius:0 8px 8px 0;'
+                            ' font-size:0.78rem; color:rgba(255,255,255,0.45); line-height:1.9;">'
+                            '<b style="color:rgba(255,255,255,0.6);">⚠ Zero-Spread Columns</b><br>'
+                            f'{col_list} — '
+                            '<span style="color:rgba(255,255,255,0.35);">'
+                            'Both IQR and MAD equal zero because ≥50% of values are identical. '
+                            'Statistical outlier detection cannot compute meaningful fences. '
+                            'Consider using Admin Safe Zones for these columns.</span>'
+                            '</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                    _info_box(
+                        '<b style="color:rgba(255,255,255,0.6);">Methodology:</b> '
+                        'Skewness determines detection method \u2014 '
+                        '<b style="color:#F59E0B;">Z-Score</b> (|skew| < 0.5) \u00b7 '
+                        '<b style="color:#F59E0B;">IQR</b> (0.5\u20131.0) \u00b7 '
+                        '<b style="color:#F59E0B;">Modified Z-Score</b> (> 1.0).<br>'
+                        'Detected outliers are capped to the method\u2019s statistical fence.'
+                    )
+                else:
+                    _skip_card("No outliers detected across all numeric columns — this step will be skipped.")
+
+        # ── Step 6: Log Transformation ────────────────────────────────────
+        elif step == 6:
+            candidates = PreprocessingEngine.get_log_transform_candidates(df)
+
+            if candidates:
+                n_log1p = sum(1 for c in candidates if c["Method"] == LOG_METHOD_LOG1P)
+                n_yj = sum(1 for c in candidates if c["Method"] == LOG_METHOD_YJ)
+
+                _metric_row([
+                    ("Skewed Columns", str(len(candidates)), col_hex),
+                    ("Log1p Applied", str(n_log1p), col_hex),
+                    ("Yeo-Johnson Applied", str(n_yj), col_hex),
+                ])
+
+                st.dataframe(
+                    pd.DataFrame(candidates),
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Skewness": st.column_config.NumberColumn(format="%.3f"),
+                        "Min": st.column_config.NumberColumn(format="%.2f"),
+                        "Max": st.column_config.NumberColumn(format="%.2f"),
+                    },
+                )
+
+                _info_box(
+                    '<b style="color:rgba(255,255,255,0.6);">Methodology:</b> '
+                    'Columns with <b style="color:#F59E0B;">|skewness| > 1.0</b> are transformed.<br>'
+                    '• <b style="color:#F59E0B;">log1p</b>: log(1+x) — used when min ≥ 0 (safe for zeros)<br>'
+                    '• <b style="color:#F59E0B;">Yeo-Johnson</b>: power transform — used when min &lt; 0 (handles negatives)<br>'
+                    '• <b style="color:#F59E0B;">Low-Variance columns</b> (≥ 80% identical values) are '
+                    '<b>automatically excluded</b> — log transform is ineffective on zero-spike distributions '
+                    'and would break downstream Binning boundaries.'
+                )
+            else:
+                _skip_card("No highly-skewed columns detected — this step will be skipped.")
+
+        # ── Step 7: Binning & Mapping ──────────────────────────────────────
+        elif step == 7:
+            from modules.utils.db_config_manager import get_rule
+            binning_config = get_rule("binning_config") or {}
+            preview = PreprocessingEngine.get_binning_preview(df, binning_config)
+
+            if preview:
+                n_bin = sum(1 for p in preview if p["Type"] == BINNING_TYPE_NUMERIC)
+                n_map = sum(1 for p in preview if p["Type"] == BINNING_TYPE_CATEGORY)
+
+                _metric_row([
+                    ("Total Rules", str(len(preview)), col_hex),
+                    ("Numeric Binning", str(n_bin), col_hex),
+                    ("Category Mapping", str(n_map), col_hex),
+                ])
+
+                st.dataframe(
+                    pd.DataFrame(preview),
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Unique Before": st.column_config.NumberColumn(format="%d"),
+                    },
+                )
+
+                _info_box(
+                    '<b style="color:rgba(255,255,255,0.6);">Methodology:</b><br>'
+                    '• <b style="color:#F59E0B;">Numeric Binning</b>: discretize continuous values into labeled ranges (e.g. age → age groups)<br>'
+                    '• <b style="color:#F59E0B;">Category Mapping</b>: group fine-grained categories into broader, analysis-ready groups'
+                )
+            else:
+                _skip_card("No binning or mapping rules configured — this step will be skipped.")
+
+        # ── Step 8: Feature Encoding ───────────────────────────────────────
+        elif step == 8:
+            from modules.utils.db_config_manager import get_rule as _get_rule_enc
+            binning_cfg = _get_rule_enc("binning_config") or {}
+            candidates = PreprocessingEngine.get_encoding_preview(
+                df, binning_config=binning_cfg,
+            )
+
+            if candidates:
+                n_label = sum(1 for c in candidates if c["Encoding"] == ENC_LABEL)
+                n_onehot = sum(1 for c in candidates if c["Encoding"] == ENC_ONEHOT)
+                n_drop = sum(1 for c in candidates if c["Encoding"] == ENC_DROP_REDUNDANT)
+
+                _metric_row([
+                    ("Total Columns", str(len(candidates)), col_hex),
+                    (ENC_LABEL, str(n_label), col_hex),
+                    (ENC_ONEHOT, str(n_onehot), col_hex),
+                    (ENC_DROP_REDUNDANT, str(n_drop), col_hex),
+                ])
+
+                enc_df = pd.DataFrame(candidates)
+
+                def _highlight_dropped(row):
+                    if row["Encoding"] == ENC_DROP_REDUNDANT:
+                        return [
+                            "background-color: rgba(245,158,11,0.18); "
+                            "color: rgba(245,158,11,0.7);"
+                        ] * len(row)
+                    return [""] * len(row)
+
+                styled_enc = enc_df.style.apply(_highlight_dropped, axis=1)
+                st.dataframe(
+                    styled_enc,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Unique": st.column_config.NumberColumn(format="%d"),
+                    },
+                )
+
+                if n_drop > 0:
+                    drop_names = ", ".join(
+                        f"<b style='color:#F59E0B;'>{c['Column']}</b>"
+                        for c in candidates if c["Encoding"] == ENC_DROP_REDUNDANT
+                    )
+                    _info_box(
+                        f'<b style="color:rgba(255,255,255,0.6);">Redundancy:</b> '
+                        f'{drop_names} will be dropped — numeric equivalent already exists.'
+                    )
+
+                _info_box(
+                    '<b style="color:rgba(255,255,255,0.6);">Methodology:</b><br>'
+                    '• <b style="color:#F59E0B;">Label Encoding</b>: ordinal/binary columns → integer codes (preserves natural order)<br>'
+                    '• <b style="color:#F59E0B;">One-Hot Encoding</b>: nominal columns → binary indicators (<code>drop_first=True</code> to avoid multicollinearity)<br>'
+                    '• <b style="color:#F59E0B;">Drop (Redundant)</b>: columns with a numeric counterpart already in dataset'
+                )
+            else:
+                _skip_card("No categorical columns found — this step will be skipped.")
+
+        # ── Step 9: Feature Scaling ────────────────────────────────────────
+        elif step == 9:
+            _info_box(
+                '<b style="color:rgba(255,255,255,0.6);">'
+                '\u2139 About This Step</b><br>'
+                'Scaler selection is computed on the '
+                '<b style="color:#F59E0B;">post-encoding DataFrame</b> '
+                '(after Steps 1\u20138) during pipeline execution. '
+                'Column distributions change significantly through '
+                'outlier treatment, log transformation, and encoding '
+                '\u2014 so preview on raw or cleaned data would be inaccurate.'
+            )
+
+            _info_box(
+                '<b style="color:rgba(255,255,255,0.6);">Methodology:</b><br>'
+                '\u2022 <b style="color:#F59E0B;">StandardScaler</b>: '
+                '(x \u2212 \u03bc) / \u03c3 \u2014 selected when |skewness| &lt; 0.5 '
+                '(near-normal distribution)<br>'
+                '\u2022 <b style="color:#F59E0B;">RobustScaler</b>: '
+                '(x \u2212 median) / IQR \u2014 selected when |skewness| \u2265 0.5 '
+                '(robust to skew &amp; remaining outliers from Safe Zones)<br>'
+                '\u2022 <b style="color:rgba(255,255,255,0.5);">Binary columns</b> '
+                '(\u2264 2 unique values) are automatically skipped.'
+            )
 
     # ==============================================================================
     # AUTH COMPONENTS

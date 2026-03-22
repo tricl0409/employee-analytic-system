@@ -11,7 +11,7 @@ Responsibilities:
     • Full audit orchestration (single-pass, no redundant computation)
 Design notes:
     - All public functions are pure (no Streamlit side-effects) except
-      those that read `session_state` config (prefixed with config-getter helpers).
+      those that read DB config (prefixed with config-getter helpers).
     - Heavy loops are vectorized with NumPy/pandas wherever possible.
     - `run_full_audit` is the single entry-point for the UI; results are
       returned as a dict and cached by the caller.
@@ -43,12 +43,11 @@ _MAD_SCALE = 0.6745
 def _get_noise_patterns() -> frozenset:
     """
     Return the active noise-pattern set.
-    Prefers admin-configured patterns from ``session_state['analysis_rules']
-    ['noise_patterns']``; falls back to ``_FALLBACK_NOISE_PATTERNS`` when
-    no rules have been loaded yet (e.g. first run before DB sync).
+    Prefers admin-configured patterns from database; falls back to 
+    ``_FALLBACK_NOISE_PATTERNS`` when no rules have been loaded yet.
     """
-    rules = st.session_state.get("analysis_rules", {})
-    custom = rules.get("noise_patterns")
+    from modules.utils.db_config_manager import get_rule
+    custom = get_rule("noise_patterns")
     if custom and isinstance(custom, list):
         return frozenset(p.lower() for p in custom)
     return _FALLBACK_NOISE_PATTERNS
@@ -61,8 +60,8 @@ def _get_safe_zones() -> Dict[str, Dict[str, float]]:
     ``'min'`` and/or ``'max'`` float bounds.
     Returns an empty dict when no safe zones have been configured.
     """
-    rules = st.session_state.get("analysis_rules", {})
-    return rules.get("safe_zones", {})
+    from modules.utils.db_config_manager import get_rule
+    return get_rule("safe_zones") or {}
 
 # =============================================================================
 # HELPERS (private)
@@ -90,7 +89,7 @@ def _normalize_col_key(name: str) -> str:
 
 def _build_norm_zones() -> Dict[str, dict]:
     """
-    Build normalised safe-zone lookup from session_state rules.
+    Build normalised safe-zone lookup from admin DB rules.
     Returns:
         Dict mapping ``{normalised_col_key: {min: ..., max: ...}}``.
     """
@@ -375,21 +374,53 @@ def evaluate_outlier_method(s: pd.Series, lang: str = "en") -> Dict[str, str]:
     """
     Evaluate the skewness of a numeric column and recommend an outlier
     detection method.
+
+    **Zero-spread detection**: When ``|skew| > 1.0`` suggests Modified Z-Score
+    but MAD = 0 (≥ 50% identical values), the function checks IQR as fallback.
+    If IQR is also 0, sets ``zero_spread = True`` — all statistical methods
+    are unable to compute meaningful fences for this column.
+
     Returns a dict with:
       - 'method': "Z-Score" | "IQR" | "Modified Z-Score"
       - 'reason': Localized explanation string
       - 'skewness': float (rounded to 3 decimals)
+      - 'fallback': bool — True if MAD=0 fallback was triggered
+      - 'zero_spread': bool — True if both MAD=0 AND IQR=0
     """
+    base = {"fallback": False, "zero_spread": False}
     skew = compute_skewness(s)
     if skew is None:
-        return {"method": "IQR", "reason": get_text("rec_iqr", lang), "skewness": 0.0}
+        return {**base, "method": "IQR", "reason": get_text("rec_iqr", lang), "skewness": 0.0}
     abs_skew = abs(skew)
     if abs_skew < 0.5:
-        return {"method": "Z-Score", "reason": get_text("rec_zscore", lang), "skewness": skew}
+        return {**base, "method": "Z-Score", "reason": get_text("rec_zscore", lang), "skewness": skew}
     elif abs_skew <= 1.0:
-        return {"method": "IQR", "reason": get_text("rec_iqr", lang), "skewness": skew}
+        return {**base, "method": "IQR", "reason": get_text("rec_iqr", lang), "skewness": skew}
     else:
-        return {"method": "Modified Z-Score", "reason": get_text("rec_mod_z", lang), "skewness": skew}
+        # Check MAD before recommending Modified Z-Score
+        clean = s.dropna()
+        mad = float((clean - clean.median()).abs().median())
+        if mad == 0:
+            # MAD=0 → check IQR as fallback
+            q1, q3 = float(clean.quantile(0.25)), float(clean.quantile(0.75))
+            if q3 - q1 == 0:
+                # Both MAD=0 AND IQR=0 → statistical detection impossible
+                return {
+                    "method": "IQR",
+                    "reason": get_text("rec_zero_spread", lang),
+                    "skewness": skew,
+                    "fallback": True,
+                    "zero_spread": True,
+                }
+            # MAD=0 but IQR > 0 → IQR can still work
+            return {
+                "method": "IQR",
+                "reason": get_text("rec_mod_z_fallback_iqr", lang),
+                "skewness": skew,
+                "fallback": True,
+                "zero_spread": False,
+            }
+        return {**base, "method": "Modified Z-Score", "reason": get_text("rec_mod_z", lang), "skewness": skew}
 
 # =============================================================================
 # COLUMN REPORT
@@ -515,7 +546,7 @@ def compute_data_summary(df: pd.DataFrame) -> pd.DataFrame:
             "Records": non_null_count,
             "Missing %": missing_pct,
             "Unique Values": unique_count,
-            "Noise": noise_count if (_is_categorical(series) and noise_count > 0) else "—",
+            "Noise": str(noise_count) if (_is_categorical(series) and noise_count > 0) else "—",
             "Distribution": distribution,
             "Central Value": central_value,
             "Outliers": outlier_label,
@@ -679,8 +710,8 @@ def validate_schema(df: pd.DataFrame, lang: str = "en") -> Dict[str, Any]:
         extra_columns    — columns present but not in schema
         type_mismatches  — list of {column, expected, actual} dicts
     """
-    rules = st.session_state.get("analysis_rules", {})
-    schema_rule = rules.get("employee_schema")
+    from modules.utils.db_config_manager import get_rule
+    schema_rule = get_rule("employee_schema")
     if not schema_rule:
 
         return {"status": "no_rule", "details": []}
@@ -729,8 +760,8 @@ def validate_safe_zones(df: pd.DataFrame) -> Tuple[pd.DataFrame, int]:
             Examples] (one row per affected column).
           - total_violations: total number of out-of-range cells.
     """
-    rules = st.session_state.get("analysis_rules", {})
-    safe_zones = rules.get("safe_zones", {})
+    from modules.utils.db_config_manager import get_rule
+    safe_zones = get_rule("safe_zones") or {}
     if not safe_zones:
         return pd.DataFrame(), 0
     # Build normalised column name map
@@ -765,6 +796,64 @@ def validate_safe_zones(df: pd.DataFrame) -> Tuple[pd.DataFrame, int]:
         columns=["Column", "Safe Min", "Safe Max", "Violations", "Examples"]
     )
     return vdf, total
+
+# =============================================================================
+# LOW-VARIANCE / ZERO-SPREAD DETECTION
+# =============================================================================
+
+#: Minimum ratio of the dominant value required to flag a column as low-variance.
+LOW_VARIANCE_THRESHOLD: float = 0.80
+
+
+def detect_low_variance(
+    df: pd.DataFrame,
+    threshold: float = LOW_VARIANCE_THRESHOLD,
+) -> pd.DataFrame:
+    """
+    Identify numeric columns where a single dominant value occupies
+    ≥ ``threshold`` (default 80%) of non-null records.
+
+    These columns suffer from **zero-spread** — IQR and MAD collapse to zero,
+    making statistical outlier detection impossible.
+
+    Args:
+        df:        Input DataFrame.
+        threshold: Fraction (0–1) of non-null values that the dominant value
+                   must exceed to be flagged.
+
+    Returns:
+        DataFrame with columns:
+          - ``Column``         — column name
+          - ``Dominant Value``  — the most frequent value
+          - ``Dominant %``      — percentage of non-null rows occupied
+          - ``Distinct Values`` — number of unique non-null values
+    """
+    num_cols = _get_num_columns(df)
+    records: List[Dict[str, Any]] = []
+
+    for col in num_cols:
+        series = df[col].dropna()
+        if series.empty:
+            continue
+
+        total = len(series)
+        val_counts = series.value_counts()
+        top_value = val_counts.index[0]
+        top_count = int(val_counts.iloc[0])
+        top_pct = top_count / total
+
+        if top_pct >= threshold:
+            n_distinct = int(series.nunique())
+
+            records.append({
+                "Column": col,
+                "Dominant Value": top_value,
+                "Dominant %": round(top_pct * 100, 1),
+                "Distinct Values": n_distinct,
+            })
+
+    return pd.DataFrame(records)
+
 
 # =============================================================================
 # SAFE ZONE MASK
@@ -815,9 +904,13 @@ def run_full_audit(df: pd.DataFrame, lang: str = "en") -> Dict[str, Any]:
     df = _auto_cast_category(df)
 
     # --- Step 2: Missing / Noise / Duplicates ---
-    missing_cells         = int(df.isnull().sum().sum())
+    missing_series        = df.isnull().sum()
+    missing_cells         = int(missing_series.sum())
     duplicates            = int(df.duplicated().sum())
     noise_df, noise_total = detect_noise_values(df)
+
+    # --- Step 2b: Per-column missing breakdown (reused by Key Issues + Missing section) ---
+    missing_cols_list = missing_series[missing_series > 0].index.tolist()
 
     # --- Step 3: Consistency issues ---
     consistency_df      = check_consistency(df, lang)
@@ -834,6 +927,30 @@ def run_full_audit(df: pd.DataFrame, lang: str = "en") -> Dict[str, Any]:
     # --- Step 5: Safe Zone validation ---
     safe_zone_df, safe_zone_total = validate_safe_zones(df)
 
+    # --- Step 6: Low-variance / zero-spread detection ---
+    low_variance_df = detect_low_variance(df)
+    low_variance_total = len(low_variance_df)
+    low_variance_columns = low_variance_df["Column"].tolist() if not low_variance_df.empty else []
+
+    # --- Step 7: Precompute key-issue helper lists (avoid re-computation in UI) ---
+    skewed_columns: List[str] = []
+    outlier_columns: List[str] = []
+    num_cols = _get_num_columns(df)
+    for col in num_cols:
+        series = df[col]
+        skew = compute_skewness(series)
+        if skew is not None and abs(skew) > 1.0:
+            skewed_columns.append(col)
+        # Outlier detection — auto-select method based on skewness
+        clean_vals = series.dropna()
+        if len(clean_vals) > 2:
+            rec = evaluate_outlier_method(series)
+            method_key = {"IQR": "iqr", "Z-Score": "zscore", "Modified Z-Score": "modified_zscore"}[rec["method"]]
+            compute_fn = _OUTLIER_METHODS[method_key]
+            mask, _ = compute_fn(clean_vals.values, default_outlier_threshold(method_key))
+            if mask.any():
+                outlier_columns.append(col)
+
     return {
         "health_score":       health,
         "total_records":      len(df),
@@ -846,4 +963,10 @@ def run_full_audit(df: pd.DataFrame, lang: str = "en") -> Dict[str, Any]:
         "noise_total":        noise_total,
         "safe_zone_violations": safe_zone_df,
         "safe_zone_total":      safe_zone_total,
+        "low_variance":         low_variance_df,
+        "low_variance_total":   low_variance_total,
+        "low_variance_columns": low_variance_columns,
+        "missing_columns":    missing_cols_list,
+        "skewed_columns":     skewed_columns,
+        "outlier_columns":    outlier_columns,
     }

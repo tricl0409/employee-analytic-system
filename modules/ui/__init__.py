@@ -10,7 +10,6 @@ preview_panel = UiComponents.preview_panel
 feature_navigation = UiComponents.feature_navigation
 sidebar_branding = UiComponents.sidebar_branding
 footer = UiComponents.footer
-audit_metric = UiComponents.audit_metric   # backward-compat alias → metric_card
 metric_card  = UiComponents.metric_card
 scan_animation = UiComponents.scan_animation
 login_form = UiComponents.login_form
@@ -21,9 +20,10 @@ sidebar_ai_chat = UiComponents.sidebar_ai_chat
 render_scrubber_tab = UiComponents.render_scrubber_tab
 render_missing_and_dupes_tab = UiComponents.render_missing_and_dupes_tab
 render_outlier_tab = UiComponents.render_outlier_tab
-pipeline_card = UiComponents.pipeline_card
 pipeline_done_banner = UiComponents.pipeline_done_banner
 detail_analysis_header = UiComponents.detail_analysis_header
+render_pipeline_sidebar = UiComponents.render_pipeline_sidebar
+render_detail_panel = UiComponents.render_detail_panel
 
 from .styles import apply_style
 from .dialogs import upload_dialog, profile_dialog

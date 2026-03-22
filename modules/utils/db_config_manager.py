@@ -18,18 +18,18 @@ from modules.core.auth_engine import _get_db_connection
 
 _DEFAULT_EMPLOYEE_SCHEMA = {
     "columns": [
-        {"name": "Age",              "dtype": "float64", "category": "numeric"},
+        {"name": "Age",              "dtype": "int64",   "category": "numeric"},
         {"name": "Workclass",        "dtype": "object",  "category": "categorical"},
-        {"name": "Fnlwgt",           "dtype": "float64", "category": "numeric"},
+        {"name": "Fnlwgt",           "dtype": "int64",   "category": "numeric"},
         {"name": "Education",        "dtype": "object",  "category": "categorical"},
-        {"name": "Education_Num",    "dtype": "float64", "category": "numeric"},
+        {"name": "Education_Num",    "dtype": "int64",   "category": "numeric"},
         {"name": "Marital_Status",   "dtype": "object",  "category": "categorical"},
         {"name": "Occupation",       "dtype": "object",  "category": "categorical"},
         {"name": "Relationship",     "dtype": "object",  "category": "categorical"},
         {"name": "Race",             "dtype": "object",  "category": "categorical"},
         {"name": "Sex",              "dtype": "object",  "category": "categorical"},
-        {"name": "Capital_Gain",     "dtype": "float64", "category": "numeric"},
-        {"name": "Capital_Loss",     "dtype": "float64", "category": "numeric"},
+        {"name": "Capital_Gain",     "dtype": "int64",   "category": "numeric"},
+        {"name": "Capital_Loss",     "dtype": "int64",   "category": "numeric"},
         {"name": "Hours_per_Week",   "dtype": "float64", "category": "numeric"},
         {"name": "Native_Country",   "dtype": "object",  "category": "categorical"},
         {"name": "Income",           "dtype": "object",  "category": "categorical"},
@@ -43,7 +43,6 @@ _DEFAULT_SAFE_ZONES = {
     "Education_Num":  {"min": 1,  "max": 16},
     "Capital_Gain":   {"min": 0,  "max": 99999},
     "Capital_Loss":   {"min": 0,  "max": 4356},
-    "Hours_per_Week": {"min": 10,  "max": 80},
 }
 
 _DEFAULT_NOISE_PATTERNS = [
@@ -57,13 +56,23 @@ _DEFAULT_BINNING_CONFIG = {
     # ── Numeric Binning ───────────────────────────────────────────────────
     "Age": {
         "type":   "bin",
-        "bins":   [0, 25, 35, 50, 65, 120],
-        "labels": ["≤25", "26-35", "36-50", "51-65", ">65"],
+        "bins":   [0, 25, 35, 45, 55, 65, 120],
+        "labels": ["≤25", "26-35", "36-45", "46-55", "56-65", ">65"],
     },
     "Hours_per_Week": {
         "type":   "bin",
         "bins":   [0, 20, 39, 40, 60, 168],
         "labels": ["≤20", "21-39", "40", "41-60", ">60"],
+    },
+    "Capital_Gain": {
+        "type":   "bin",
+        "bins":   [-1, 0, 5000, 99998, float("inf")],
+        "labels": ["None", "Low", "High", "Extreme"],
+    },
+    "Capital_Loss": {
+        "type":   "bin",
+        "bins":   [-1, 0, 1900, float("inf")],
+        "labels": ["None", "Low", "High"],
     },
     # ── Categorical Mapping ───────────────────────────────────────────────
     "Education": {
@@ -99,9 +108,11 @@ _DEFAULT_BINNING_CONFIG = {
         "groups": {
             "Management/Professional": ["Exec-managerial", "Prof-specialty", "Tech-support"],
             "Administrative/Sales":    ["Adm-clerical", "Sales"],
-            "Blue-collar":             ["Craft-repair", "Machine-op-inspct", "Transport-moving", "Handlers-cleaners", "Farming-fishing"],
-            "Service":                 ["Other-service", "Priv-house-serv", "Protective-serv", "Armed-Forces"],
-            "Others":                   ["?"],
+            "Blue-collar":             ["Craft-repair", "Machine-op-inspct", "Handlers-cleaners"],
+            "Service":                 ["Other-service", "Protective-serv", "Priv-house-serv", "Armed-Forces"],
+            "Transport":               ["Transport-moving"],
+            "Farming/Fishing":         ["Farming-fishing"],
+            "Others":                  ["?"],
         },
     },
     "Native_Country": {
@@ -126,7 +137,6 @@ _DEFAULTS: Dict[str, Any] = {
     "noise_patterns":  _DEFAULT_NOISE_PATTERNS,
     "binning_config":  _DEFAULT_BINNING_CONFIG,
 }
-
 
 
 # ==============================================================================

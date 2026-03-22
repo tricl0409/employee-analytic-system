@@ -223,11 +223,16 @@ def plot_outlier_distribution(
     s: pd.Series,
     risk_df: pd.DataFrame,
     method: str,
-    lang: str = "en"
+    lang: str = "en",
+    skip_fences: bool = False,
 ) -> go.Figure:
     """
     Plots the numeric distribution of a column with a Bell Curve overlay
     to indicate skewness. Also marks the boundaries of the selected outlier method.
+
+    Args:
+        skip_fences: If True, suppress the Lower/Upper fence lines (used
+                     when MAD=0 AND IQR=0 makes statistical fences meaningless).
     """
     import numpy as np
     from scipy.stats import norm
@@ -267,37 +272,38 @@ def plot_outlier_distribution(
         hovertemplate="Theoretical Normal<extra></extra>"
     ))
 
-    # 3. Method Boundaries
-    # Try to extract the min/max of the un-flagged region
-    # If risk_df is empty, boundaries are outside the min/max
-    outlier_vals = risk_df[s.name].dropna() if not risk_df.empty and s.name in risk_df.columns else []
-    
-    # Very rough calculation of fences for visual reference
-    fence_lo, fence_hi = None, None
-    from modules.core.audit_engine import default_outlier_threshold
-    _thresh = default_outlier_threshold(method)
-    if method == "iqr":
-        Q1 = clean_s.quantile(0.25)
-        Q3 = clean_s.quantile(0.75)
-        IQR = Q3 - Q1
-        fence_lo, fence_hi = Q1 - _thresh * IQR, Q3 + _thresh * IQR
-    elif method == "zscore":
-        fence_lo, fence_hi = mean_val - _thresh * std_val, mean_val + _thresh * std_val
-    elif method == "modified_zscore":
-        median = clean_s.median()
-        mad = (clean_s - median).abs().median()
-        if mad != 0:
-            fence_lo = median - _thresh * mad / 0.6745
-            fence_hi = median + _thresh * mad / 0.6745
+    # 3. Method Boundaries (skipped when zero-spread)
+    if not skip_fences:
+        fence_lo, fence_hi = None, None
+        from modules.core.audit_engine import default_outlier_threshold
+        _thresh = default_outlier_threshold(method)
+        if method == "iqr":
+            Q1 = clean_s.quantile(0.25)
+            Q3 = clean_s.quantile(0.75)
+            IQR = Q3 - Q1
+            fence_lo, fence_hi = Q1 - _thresh * IQR, Q3 + _thresh * IQR
+        elif method == "zscore":
+            fence_lo, fence_hi = mean_val - _thresh * std_val, mean_val + _thresh * std_val
+        elif method == "modified_zscore":
+            median = clean_s.median()
+            mad = (clean_s - median).abs().median()
+            if mad != 0:
+                fence_lo = median - _thresh * mad / 0.6745
+                fence_hi = median + _thresh * mad / 0.6745
 
-    if fence_lo is not None and fence_hi is not None:
-        # Draw threshold lines if they fall within the visible plot area
-        if fence_lo > x_min - (x_max - x_min)*0.2:
-            fig.add_vline(x=fence_lo, line_width=2, line_dash="solid", line_color=RED, 
-                         annotation_text="Lower Limit", annotation_position="top left", annotation_font_color=RED)
-        if fence_hi < x_max + (x_max - x_min)*0.2:
-            fig.add_vline(x=fence_hi, line_width=2, line_dash="solid", line_color=RED, 
-                         annotation_text="Upper Limit", annotation_position="top right", annotation_font_color=RED)
+        if fence_lo is not None and fence_hi is not None:
+            # Only draw if fences are actually different (IQR/MAD > 0)
+            if fence_lo != fence_hi:
+                # Format fence values for display
+                _fmt_lo = f"{fence_lo:,.2f}" if fence_lo != int(fence_lo) else f"{int(fence_lo):,}"
+                _fmt_hi = f"{fence_hi:,.2f}" if fence_hi != int(fence_hi) else f"{int(fence_hi):,}"
+                # Draw threshold lines if they fall within the visible plot area
+                if fence_lo > x_min - (x_max - x_min)*0.2:
+                    fig.add_vline(x=fence_lo, line_width=2, line_dash="solid", line_color=RED,
+                                 annotation_text=f"Lower: {_fmt_lo}", annotation_position="top left", annotation_font_color=RED)
+                if fence_hi < x_max + (x_max - x_min)*0.2:
+                    fig.add_vline(x=fence_hi, line_width=2, line_dash="solid", line_color=RED,
+                                 annotation_text=f"Upper: {_fmt_hi}", annotation_position="top right", annotation_font_color=RED)
 
     # Copy base layout to avoid mutating the global default
     layout_cfg = CHART_LAYOUT.copy()
@@ -641,6 +647,7 @@ def plot_issue_composition(
     issue_dict: dict,
     total_values: int,
     display_overrides: dict = None,
+    detail_labels: dict = None,
 ) -> go.Figure:
     """
     Dual-panel chart for Issue Composition.
@@ -651,6 +658,7 @@ def plot_issue_composition(
         issue_dict:        {label: count_in_cells} for % calculation.
         total_values:      Total cells in the dataset (rows x columns).
         display_overrides: {label: original_count} for bar text display.
+        detail_labels:     {label: "custom annotation text"} for bar end labels.
     """
     from plotly.subplots import make_subplots
 
@@ -658,6 +666,8 @@ def plot_issue_composition(
     items = sorted(issue_dict.items(), key=lambda x: x[1], reverse=True)
     if display_overrides is None:
         display_overrides = {}
+    if detail_labels is None:
+        detail_labels = {}
     labels = [it[0] for it in items]
     counts = [int(it[1]) for it in items]
     # Display counts: use original values (e.g. rows) where overridden
@@ -687,6 +697,7 @@ def plot_issue_composition(
         "duplicate":       "section-field-integrity",
         "noise":           "section-data-quality",
         "inconsisten":     "section-data-quality",
+        "low-variance":    "section-low-variance",
     }
 
     def _anchor(label: str) -> str:
@@ -733,10 +744,15 @@ def plot_issue_composition(
     # Always-visible value annotations at end of each bar
     max_pct_val = max(pcts) if any(p > 0 for p in pcts) else 1.0
     x_end_approx = max_pct_val * 1.55
-    for lbl, p, dc, clr in zip(labels, pcts, display_counts, bar_colors):
+    for lbl, p, dc, clr, cnt in zip(labels, pcts, display_counts, bar_colors, counts):
+        # Use detail_labels if provided, otherwise default format
+        if lbl in detail_labels:
+            ann_text = f"  {p:.2f}%  ({detail_labels[lbl]})"
+        else:
+            ann_text = f"  {p:.2f}%  ({cnt:,} values)"
         fig.add_annotation(
             x=p, y=lbl,
-            text=f"  {p:.2f}%  ({dc:,})",
+            text=ann_text,
             xref="x", yref="y",
             showarrow=False,
             xanchor="left",
@@ -758,8 +774,7 @@ def plot_issue_composition(
             hole=0.62,
             marker=dict(colors=[_OK, _CRIT], line=dict(color="rgba(0,0,0,0.3)", width=1.5)),
             textfont=dict(family='"Inter", sans-serif', size=11, color=BRIGHT_TEXT),
-            textinfo="label+percent",
-            textposition="outside",
+            textinfo="none",
             rotation=90,
             pull=[0, 0.04],
             domain=dict(x=[0, 1], y=[0.1, 0.9]),
