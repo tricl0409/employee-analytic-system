@@ -79,11 +79,11 @@ def delete_data(filename: str) -> bool:
 def save_dataframe(df, filename: str) -> str:
     """
     Saves a pandas DataFrame as a CSV file to the uploads directory.
-    
+
     Args:
         df (pd.DataFrame): The DataFrame to save.
         filename (str): The name of the file (e.g., "data_cleaned.csv").
-        
+
     Returns:
         str: The absolute path to the saved file.
     """
@@ -91,3 +91,35 @@ def save_dataframe(df, filename: str) -> str:
     file_path = os.path.join(UPLOADS_DIR, filename)
     df.to_csv(file_path, index=False)
     return file_path
+
+
+def save_with_auto_increment(
+    df,
+    base_stem: str,
+    suffix: str,
+) -> tuple:
+    """Save a DataFrame with auto-incrementing filename to avoid overwrites.
+
+    When ``<base_stem><suffix>.csv`` already exists, appends ``_1``, ``_2``, …
+    until a free filename is found.  Returns both the final filename and the
+    CSV bytes (UTF-8 encoded) for downstream use (e.g. ZIP download).
+
+    Args:
+        df:        DataFrame to save.
+        base_stem: Stem of the original file (e.g. ``"employee_data"``).
+        suffix:    Descriptive suffix (e.g. ``"_cleaned"``, ``"_encoded"``).
+
+    Returns:
+        Tuple of ``(filename, csv_bytes)`` where *filename* is the basename
+        written to ``UPLOADS_DIR`` and *csv_bytes* is the UTF-8 encoded CSV
+        content as ``bytes``.
+    """
+    filename = f"{base_stem}{suffix}.csv"
+    counter = 1
+    while os.path.exists(os.path.join(UPLOADS_DIR, filename)):
+        filename = f"{base_stem}{suffix}_{counter}.csv"
+        counter += 1
+    save_dataframe(df, filename)
+    csv_bytes = df.to_csv(index=False).encode("utf-8")
+    return filename, csv_bytes
+
