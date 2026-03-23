@@ -16,7 +16,7 @@ import plotly.graph_objects as go
 from scipy.stats import chi2_contingency
 
 from modules.core import data_engine
-from modules.core.preprocessing_engine import PreprocessingEngine
+from modules.core.preprocessing_engine import PreprocessingEngine, bin_label_sort_key
 from modules.ui import (
     page_header, workspace_status,
     active_file_scan_progress_bar, section_divider, metric_card,
@@ -24,7 +24,7 @@ from modules.ui import (
 from modules.ui.components import styled_alert
 from modules.ui.visualizer import (
     CHART_LAYOUT, MUTED_COLOR, BRIGHT_TEXT, GRID_COLOR,
-    apply_global_theme,
+    apply_global_theme, chart_target_correlation,
 )
 from modules.utils.localization import get_text
 from modules.utils.helpers import _ensure_workspace_active, save_temp_csv
@@ -42,6 +42,15 @@ _STRIP_KEYS = {"legend", "margin"}
 
 # Section header accent (amber — consistent with insight boxes)
 _ACCENT_AMBER = "#FF9F43"
+_ACCENT_TEAL  = "#2DD4BF"
+
+# Shared amber colorscale for heatmaps (transparent → amber gradient)
+_AMBER_SCALE = [
+    [0.0, "rgba(255,255,255,0.03)"],
+    [0.3, "rgba(255,159,67,0.20)"],
+    [0.6, "rgba(255,159,67,0.45)"],
+    [1.0, "rgba(255,159,67,0.80)"],
+]
 
 # Education color palette — gradient from low → high education
 _EDU_COLORS = {
@@ -112,37 +121,93 @@ def _apply_binning_onthefly(df: pd.DataFrame) -> pd.DataFrame:
     return PreprocessingEngine.apply_binning_mapping(df_binned, binning_config)
 
 
-def _insight_box(html_text: str) -> str:
+def _insight_box(html_text: str, accent: str = _ACCENT_AMBER) -> str:
     """
-    Prominent insight callout — amber accent, icon header, bold highlights.
-    Auto-converts <b>text</b> inside html_text to amber-colored bold spans.
+    Prominent insight callout with configurable accent color.
+    Auto-converts <b>text</b> inside html_text to accent-colored bold spans.
     """
+    hex_val = accent.lstrip("#")
+    r_val, g_val, b_val = int(hex_val[0:2], 16), int(hex_val[2:4], 16), int(hex_val[4:6], 16)
+    rgb = f"{r_val},{g_val},{b_val}"
     highlighted = html_text.replace(
-        "<b>", "<b style='color:#FF9F43;font-weight:700;'>",
+        "<b>", f"<b style='color:{accent};font-weight:700;'>",
     )
     return (
-        "<div style='"
-        "background:rgba(255,159,67,0.07);"
-        "border:1px solid rgba(255,159,67,0.18);"
-        "border-left:3px solid rgba(255,159,67,0.85);"
-        "border-radius:8px;"
-        "padding:14px 16px;"
-        "margin-top:10px;'"
-        ">"
-        "<div style='"
-        "font-size:0.67rem;font-weight:700;"
-        "color:rgba(255,159,67,0.65);"
-        "text-transform:uppercase;letter-spacing:1.2px;"
-        "margin-bottom:8px;"
-        "'>" + get_icon('zap', size=13, color='rgba(255,159,67,0.65)') + " Insight</div>"
+        f"<div style='"
+        f"background:rgba({rgb},0.07);"
+        f"border:1px solid rgba({rgb},0.18);"
+        f"border-left:3px solid rgba({rgb},0.85);"
+        f"border-radius:8px;"
+        f"padding:14px 16px;"
+        f"margin-top:10px;"
+        f"min-height:120px;"
+        f"display:flex;flex-direction:column;justify-content:center;'"
+        f">"
+        f"<div style='"
+        f"font-size:0.67rem;font-weight:700;"
+        f"color:rgba({rgb},0.65);"
+        f"text-transform:uppercase;letter-spacing:1.2px;"
+        f"margin-bottom:8px;"
+        f"'>" + get_icon('zap', size=13, color=f'rgba({rgb},0.65)') + " Insight</div>"
         f"<div style='"
         f"font-size:0.80rem;"
         f"color:rgba(255,255,255,0.72);"
         f"line-height:1.75;"
         f"'>{highlighted}</div>"
-        "</div>"
+        f"</div>"
     )
 
+
+def _insight_list_box(
+    bullets: list[str],
+    title: str = "Key Findings",
+    icon: str = "bar_chart",
+    accent: str = _ACCENT_AMBER,
+    flex_wrap: bool = False,
+) -> str:
+    """Bulleted insight callout with configurable accent, icon, and title.
+
+    Args:
+        bullets:   List of HTML strings (one per bullet point).
+        title:     Header label.
+        icon:      Icon name from the SVG registry.
+        accent:    Hex accent color.
+        flex_wrap: If True, renders bullets in a flex-wrap row (compact).
+
+    Returns:
+        HTML string ready for ``st.markdown(…, unsafe_allow_html=True)``.
+    """
+    hex_val = accent.lstrip("#")
+    r_v, g_v, b_v = int(hex_val[0:2], 16), int(hex_val[2:4], 16), int(hex_val[4:6], 16)
+    rgb = f"{r_v},{g_v},{b_v}"
+    # Auto-highlight <b> tags with accent color
+    colored_bullets = [
+        b.replace("<b>", f"<b style='color:{accent};font-weight:700;'>")
+        for b in bullets
+    ]
+    bullet_html = "".join(
+        f"<li style='margin-bottom:10px;line-height:1.75;'>{b}</li>"
+        for b in colored_bullets
+    )
+    flex_style = "display:flex;flex-wrap:wrap;gap:0 40px;" if flex_wrap else ""
+    icon_html = get_icon(icon, size=13, color=f'rgba({rgb},0.65)')
+    return (
+        f"<div style='"
+        f"background:rgba({rgb},0.05);"
+        f"border:1px solid rgba({rgb},0.15);"
+        f"border-left:3px solid rgba({rgb},0.65);"
+        f"border-radius:0 12px 12px 0;"
+        f"padding:18px 22px;margin-top:10px;'>"
+        f"<div style='font-size:0.67rem;font-weight:700;"
+        f"color:rgba({rgb},0.65);"
+        f"text-transform:uppercase;letter-spacing:1.2px;"
+        f"margin-bottom:10px;'>"
+        f"{icon_html} {title}</div>"
+        f"<ul style='"
+        f"font-size:0.82rem;color:rgba(255,255,255,0.72);"
+        f"padding-left:18px;margin:0;list-style-type:disc;"
+        f"{flex_style}'>{bullet_html}</ul></div>"
+    )
 
 def _section_header(
     title: str,
@@ -401,155 +466,122 @@ def _render_section1(df: pd.DataFrame, income_col: str) -> None:
     )
 
 
-# Minimum association threshold to display in the heatmap
-_ASSOC_MIN_THRESHOLD: float = 0.20
+# Minimum |r| threshold to display in the heatmap
+_CORR_MIN_THRESHOLD: float = 0.05
+_CORR_DISPLAY_THRESHOLD: float = 0.20
+
+# Display-name overrides (internal col → user-friendly label)
+_FEATURE_DISPLAY_NAMES: dict[str, str] = {
+    "education_num": "education",
+}
 
 
-def _compute_association_scores(
+def _compute_correlation_scores(
     df: pd.DataFrame,
     income_col: str,
-    min_threshold: float = _ASSOC_MIN_THRESHOLD,
+    min_threshold: float = _CORR_MIN_THRESHOLD,
 ) -> pd.DataFrame:
-    """
-    Compute association strength of **every** non-income column with
-    binary income, then keep only features with score ≥ *min_threshold*.
+    """Compute Pearson correlation of every feature with income.
 
-    When *df* is the binned copy, most/all columns are categorical,
-    so **Cramér's V** is used. For any remaining numeric columns,
-    Point-Biserial is used as fallback.
+    Uses ``encode_for_correlation`` from ``data_engine`` to convert all
+    categorical columns to numeric (domain-knowledge ordinal mapping)
+    on a **temporary copy** — the original *df* is never mutated.
 
     Args:
-        df:             DataFrame (ideally binned).
+        df:             DataFrame (typically the cleaned/raw data).
         income_col:     Name of the income column.
-        min_threshold:  Minimum association score to include (default 0.20).
+        min_threshold:  Minimum |r| to include (default 0.05).
 
     Returns:
-        DataFrame with columns: attribute, association, method
-        sorted by association descending, filtered by threshold.
+        DataFrame with columns: ``attribute``, ``association``
+        sorted by ``|association|`` descending, filtered by threshold.
     """
-    hi_binary = _high_mask(df[income_col]).astype(float)
-    rows = []
+    df_encoded = data_engine.encode_for_correlation(df)
 
-    for col in df.columns:
-        # Skip income itself
-        if col == income_col:
-            continue
+    # Ensure income exists as numeric
+    if income_col not in df_encoded.columns:
+        return pd.DataFrame(columns=["attribute", "association"])
 
-        series = df[col].dropna()
-        if len(series) < 10:
-            continue
+    numeric_df = df_encoded.select_dtypes(include=["number"])
+    if income_col not in numeric_df.columns:
+        return pd.DataFrame(columns=["attribute", "association"])
 
-        # Choose method based on dtype
-        if pd.api.types.is_numeric_dtype(series):
-            numeric_vals = pd.to_numeric(df[col], errors="coerce")
-            score = abs(_point_biserial(numeric_vals, hi_binary))
-            method_label = "Point-Biserial"
-        else:
-            # Categorical (including binned columns) → Cramér's V
-            valid_idx = df[col].notna() & df[income_col].notna()
-            score = _cramers_v(
-                df.loc[valid_idx, col].astype(str),
-                hi_binary[valid_idx].astype(int).astype(str),
-            )
-            method_label = "Cramér's V"
+    corr_series = numeric_df.corr()[income_col].drop(income_col, errors="ignore")
+    corr_series = corr_series.dropna()
 
-        if score >= min_threshold:
-            rows.append({
-                "attribute": col,
-                "association": round(score, 3),
-                "method": method_label,
-            })
+    # Filter by threshold
+    mask = corr_series.abs() >= min_threshold
+    corr_series = corr_series[mask]
 
-    result_df = pd.DataFrame(rows)
+    result_df = pd.DataFrame({
+        "attribute": corr_series.index,
+        "association": corr_series.values.round(3),
+    })
     if not result_df.empty:
-        result_df = result_df.sort_values("association", ascending=False).reset_index(drop=True)
+        result_df = result_df.reindex(
+            result_df["association"].abs().sort_values(ascending=False).index,
+        ).reset_index(drop=True)
     return result_df
 
 
-def _chart_association_heatmap(assoc_df: pd.DataFrame) -> go.Figure:
-    """Single-column heatmap: association strength [0, 1]."""
-    attributes = assoc_df["attribute"].tolist()
-    scores = assoc_df["association"].tolist()
-    methods = assoc_df["method"].tolist()
+def _chart_correlation_bar(corr_df: pd.DataFrame) -> go.Figure | None:
+    """Horizontal bar chart: Pearson r per feature, gradient-colored by |r|.
 
-    fig = go.Figure(go.Heatmap(
-        z=[[s] for s in scores],
-        x=["Association"],
-        y=attributes,
-        text=[[f"{s:.3f}"] for s in scores],
-        texttemplate="%{text}",
-        textfont=dict(size=12, color="rgba(255,255,255,0.9)"),
-        colorscale=[
-            [0.0, "rgba(255,255,255,0.03)"],
-            [0.3, "rgba(255,159,67,0.20)"],
-            [0.6, "rgba(255,159,67,0.45)"],
-            [1.0, "rgba(255,159,67,0.80)"],
-        ],
-        zmin=0,
-        zmax=max(scores) * 1.1 if scores else 1.0,
-        customdata=methods,
-        hovertemplate=(
-            "<b>%{y}</b><br>"
-            "Association: <b>%{z:.3f}</b><br>"
-            "Method: %{customdata}"
-            "<extra></extra>"
-        ),
-        showscale=True,
-        colorbar=dict(
-            title=dict(text="Strength", font=dict(size=10, color=MUTED_COLOR)),
-            tickfont=dict(size=9, color=MUTED_COLOR),
-            len=0.8,
-            thickness=12,
-        ),
-        xgap=2,
-        ygap=2,
-    ))
-
-    fig.update_layout(
-        **_base_layout(),
-        height=360,
-        margin=dict(l=120, r=60, t=30, b=20),
-        xaxis=dict(
-            tickfont=dict(color=MUTED_COLOR, size=11),
-            side="bottom",
-        ),
-        yaxis=dict(
-            tickfont=dict(color=MUTED_COLOR, size=11),
-            autorange="reversed",
-        ),
+    Reuses ``chart_target_correlation`` from the visualizer module for
+    consistent styling with the Preprocessing page.
+    """
+    # Build a mini correlation matrix from the corr_df rows
+    features = corr_df["attribute"].tolist()
+    scores = corr_df["association"].tolist()
+    corr_dict = {f: s for f, s in zip(features, scores)}
+    corr_dict["income"] = 1.0  # dummy self-correlation
+    corr_matrix = pd.DataFrame(
+        {"income": pd.Series(corr_dict)}
     )
-    return apply_global_theme(fig)
+    return chart_target_correlation(corr_matrix, target_col="income")
 
 
 def _render_section2(
     df: pd.DataFrame,
     income_col: str,
 ) -> None:
-    """Render Association Heatmap (Cramér's V on binned data) + Insight."""
+    """Render Feature Correlation bar chart (encoded data) + Insight."""
     _section_header(
-        "Feature Association with High Income",
-        subtitle="Cramér's V score for each feature — only features with association ≥ 20% are shown",
+        "Feature Correlation with Income",
+        subtitle="Pearson r — features encoded via domain-knowledge ordinal mapping",
         icon_name="target",
+        accent=_ACCENT_TEAL,
     )
 
-    assoc_df = _compute_association_scores(df, income_col)
+    corr_df = _compute_correlation_scores(df, income_col)
 
-    if assoc_df.empty:
-        styled_alert("Insufficient data to compute associations.", "info")
+    if corr_df.empty:
+        styled_alert("Insufficient data to compute correlations.", "info")
         return
 
-    st.plotly_chart(
-        _chart_association_heatmap(assoc_df),
-        use_container_width=True, key="ch_assoc_heatmap",
-    )
+    # Filter: only features with |r| >= 20%
+    corr_df = corr_df[corr_df["association"].abs() >= _CORR_DISPLAY_THRESHOLD].reset_index(drop=True)
+    if corr_df.empty:
+        styled_alert("No features have |r| ≥ 0.20 with Income.", "info")
+        return
+
+    # Rename education_num → education for display
+    corr_df = corr_df.copy()
+    corr_df["attribute"] = corr_df["attribute"].replace(_FEATURE_DISPLAY_NAMES)
+
+    fig = _chart_correlation_bar(corr_df)
+    if fig is not None:
+        # Match donut chart height (360px) for side-by-side alignment
+        fig.update_layout(height=360)
+        st.plotly_chart(fig, use_container_width=True, key="ch_assoc_heatmap")
 
     # Dynamic insight: top-3 and count
-    n_features = len(assoc_df)
-    top3 = assoc_df.head(3)
+    n_features = len(corr_df)
+    top3 = corr_df.head(3)
     top3_names = top3["attribute"].tolist()
     top3_scores = top3["association"].tolist()
 
-    top_parts = [f"<b>{n}</b> ({s:.3f})" for n, s in zip(top3_names, top3_scores)]
+    top_parts = [f"<b>{n}</b> ({s:+.3f})" for n, s in zip(top3_names, top3_scores)]
     if len(top_parts) >= 3:
         top_text = f"{top_parts[0]}, {top_parts[1]}, and {top_parts[2]}"
     else:
@@ -557,10 +589,11 @@ def _render_section2(
 
     st.markdown(
         _insight_box(
-            f"<b>{n_features}</b> out of {len(df.columns) - 1} features show "
-            f"meaningful association (≥ 0.20) with High Income. "
+            f"<b>{n_features}</b> features show strong correlation "
+            f"(|r| ≥ {_CORR_DISPLAY_THRESHOLD:.0%}) with Income. "
             f"The strongest predictors are {top_text}. "
-            f"These features should be prioritized in cross-feature analysis."
+            f"These features should be prioritized in cross-feature analysis.",
+            accent=_ACCENT_TEAL,
         ),
         unsafe_allow_html=True,
     )
@@ -638,7 +671,8 @@ def _chart_crosstab_heatmap(
         ),
         hovertemplate=(
             "<b>%{y}</b> × <b>%{x}</b><br>"
-            "High Income Rate: <b>%{z:.2f}</b><extra></extra>"
+            + ("High Income Rate: <b>%{z:.0%}</b><extra></extra>" if fmt_pct
+               else "High Income Rate: <b>%{z:.2f}</b><extra></extra>")
         ),
         xgap=2,
         ygap=2,
@@ -690,12 +724,6 @@ def _render_section3(
         return
 
     hi_mask = _high_mask(df_binned[income_col])
-    _AMBER_SCALE = [
-        [0.0, "rgba(255,255,255,0.03)"],
-        [0.3, "rgba(255,159,67,0.20)"],
-        [0.6, "rgba(255,159,67,0.45)"],
-        [1.0, "rgba(255,159,67,0.80)"],
-    ]
 
     col_left, col_right = st.columns(2, gap="medium")
 
@@ -817,30 +845,20 @@ def _render_section3b(
     )
 
     # Pre-compute sort orders
-    hi_mask_pre = _high_mask(df_binned[income_col])
+    hi_mask = _high_mask(df_binned[income_col])
 
     # Y-axis: age groups sorted descending (oldest at top)
-    import re
     age_labels = df_binned[age_col].astype(str).unique().tolist()
-    sorted_age = sorted(
-        age_labels,
-        key=lambda lbl: int(re.search(r"\d+", lbl).group()) if re.search(r"\d+", lbl) else 0,
-        reverse=True,
-    )
+    sorted_age = sorted(age_labels, key=bin_label_sort_key, reverse=True)
 
     # X-axis: education sorted by overall High Income Rate descending
-    rate_by_edu = hi_mask_pre.groupby(df_binned[edu_col].astype(str)).mean()
+    rate_by_edu = hi_mask.groupby(df_binned[edu_col].astype(str)).mean()
     sorted_edu = rate_by_edu.sort_values(ascending=False).index.tolist()
 
     fig = _chart_crosstab_heatmap(
         df_binned, income_col, age_col, edu_col,
         title="High Income Rate: Age Group × Education",
-        colorscale=[
-            [0.0, "rgba(255,255,255,0.03)"],
-            [0.3, "rgba(255,159,67,0.20)"],
-            [0.6, "rgba(255,159,67,0.45)"],
-            [1.0, "rgba(255,159,67,0.80)"],
-        ],
+        colorscale=_AMBER_SCALE,
         fmt_pct=True,
     )
     fig.update_layout(
@@ -858,8 +876,7 @@ def _render_section3b(
     )
     st.plotly_chart(fig, use_container_width=True, key="ch_ct_age_edu")
 
-    # Dynamic insight
-    hi_mask = _high_mask(df_binned[income_col])
+    # Dynamic insight (reuse hi_mask from above)
     ct = hi_mask.groupby(
         [df_binned[age_col].astype(str), df_binned[edu_col].astype(str)]
     ).mean()
@@ -909,19 +926,20 @@ def _chart_hbar_rate(
         rate = rate[rate.index.isin(top_cats)]
 
     rate = rate.sort_values(ascending=True)
-    mx = max(rate.max(), 0.01)
-    colors = [f"rgba(255,159,67,{0.3 + 0.7 * v / mx:.2f})" for v in rate.values]
+    rate_pct = (rate * 100).round(1)
+    mx = max(rate_pct.max(), 0.01)
+    colors = [f"rgba(255,159,67,{0.3 + 0.7 * v / mx:.2f})" for v in rate_pct.values]
 
     fig = go.Figure(go.Bar(
-        y=rate.index.tolist(),
-        x=rate.round(2).values,
+        y=rate_pct.index.tolist(),
+        x=rate_pct.values,
         orientation="h",
         marker=dict(color=colors, line=dict(width=0)),
-        text=[f"{v:.2f}" for v in rate.values],
+        text=[f"{v:.1f}%" for v in rate_pct.values],
         textposition="outside",
         textfont=dict(color=MUTED_COLOR, size=10),
         cliponaxis=False,
-        hovertemplate="<b>%{y}</b><br>High Income rate: <b>%{x:.2f}</b><extra></extra>",
+        hovertemplate="<b>%{y}</b><br>High Income Rate: <b>%{x:.1f}%</b><extra></extra>",
     ))
 
     fig.update_layout(
@@ -935,10 +953,10 @@ def _chart_hbar_rate(
             x=0.5, xanchor="center",
         ),
         xaxis=dict(
-            title=dict(text="High Income Rate", font=dict(color=MUTED_COLOR, size=10)),
+            title=dict(text="High Income Rate (%)", font=dict(color=MUTED_COLOR, size=10)),
             tickfont=dict(color=MUTED_COLOR, size=9),
             gridcolor=GRID_COLOR,
-            range=[0, min(mx * 1.35, 1.0)],
+            range=[0, min(mx * 1.35, 100)],
         ),
         yaxis=dict(
             tickfont=dict(color=MUTED_COLOR, size=10),
@@ -975,7 +993,7 @@ def _compute_feature_insight(
     gap_pp = round(top_pct - bot_pct, 1)
 
     return (
-        f"<b>{feature_col}</b> (V = {assoc_score:.3f}): "
+        f"<b>{feature_col}</b> (r = {assoc_score:.3f}): "
         f"<b>{top_cat}</b> has the highest High Income Rate at <b>{top_pct}%</b>, "
         f"vs <b>{bot_cat}</b> at <b>{bot_pct}%</b> "
         f"— a <b>{gap_pp} pp</b> gap."
@@ -983,17 +1001,19 @@ def _compute_feature_insight(
 
 
 def _render_section4(
+    df_raw: pd.DataFrame,
     df_binned: pd.DataFrame,
     income_col: str,
 ) -> None:
     """
     Render Demographic Breakdown of High Income.
 
-    Dynamically picks the top 4 features from association scores
-    (same computation as Section 2) and renders hbar charts + insights.
+    Dynamically picks the top 4 features from correlation scores
+    (same computation as Section 2, using raw data) and renders
+    hbar charts + insights from binned data.
     """
-    # Compute association on binned data (reuse same logic as Section 2)
-    assoc_df = _compute_association_scores(df_binned, income_col)
+    # Compute correlation on raw data (same source as Section 2 heatmap)
+    assoc_df = _compute_correlation_scores(df_raw, income_col)
 
     if len(assoc_df) < 1:
         styled_alert("Insufficient data for demographic breakdown.", "info")
@@ -1002,6 +1022,13 @@ def _render_section4(
     top4 = assoc_df.head(4)
     top4_features = top4["attribute"].tolist()
     top4_scores = top4["association"].tolist()
+
+    # education_num fallback: use 'education' column for breakdown charts
+    top4_features = [
+        "education" if f == "education_num" and "education" in df_binned.columns
+        else f
+        for f in top4_features
+    ]
 
     # Build subtitle dynamically from top-4 feature names
     subtitle_features = ", ".join(top4_features[:3])
@@ -1062,32 +1089,8 @@ def _render_section4(
                 )
 
         if bullets:
-            bullet_html = "".join(
-                f"<li style='margin-bottom:14px;line-height:1.75;'>{b}</li>"
-                for b in bullets
-            )
             st.markdown(
-                f"<div style='"
-                f"background:rgba(255,159,67,0.05);"
-                f"border:1px solid rgba(255,159,67,0.15);"
-                f"border-left:3px solid rgba(255,159,67,0.65);"
-                f"border-radius:0 12px 12px 0;"
-                f"padding:20px 22px;"
-                f"margin-top:10px;"
-                f"'>"
-                f"<div style='font-size:0.67rem;font-weight:700;"
-                f"color:rgba(255,159,67,0.65);"
-                f"text-transform:uppercase;letter-spacing:1.2px;"
-                f"margin-bottom:10px;'"
-                f"'>" + get_icon('bar_chart', size=13, color='rgba(255,159,67,0.65)') + " Key Findings</div>"
-                f"<ul style='"
-                f"font-size:0.82rem;"
-                f"color:rgba(255,255,255,0.72);"
-                f"padding-left:18px;"
-                f"margin:0;"
-                f"list-style-type:disc;"
-                f"'>{bullet_html}</ul>"
-                f"</div>",
+                _insight_list_box(bullets, title="Key Findings", icon="bar_chart"),
                 unsafe_allow_html=True,
             )
         else:
@@ -1555,18 +1558,13 @@ def _render_section9(
     ct_rate = (ct_hi / ct_count.replace(0, np.nan)).fillna(0)
 
     # Sort X-axis (hours) in logical ascending order
-    def _hours_sort_key(label: str) -> int:
-        """Extract a numeric sort key from a hours-group label."""
-        digits = "".join(c for c in label if c.isdigit())
-        return int(digits) if digits else 999
-
-    sorted_hours = sorted(ct_count.columns, key=_hours_sort_key)
+    sorted_hours = sorted(ct_count.columns, key=bin_label_sort_key)
     ct_count = ct_count.reindex(columns=sorted_hours, fill_value=0)
     ct_rate = ct_rate.reindex(columns=sorted_hours, fill_value=0)
 
     # Sort occupations by total working hours descending (ascending for Plotly bottom-to-top)
     # Compute weighted total hours per occupation
-    hrs_weights = {col: _hours_sort_key(col) for col in sorted_hours}
+    hrs_weights = {col: bin_label_sort_key(col) for col in sorted_hours}
     total_hrs = ct_count.apply(lambda row: sum(row[c] * hrs_weights.get(c, 0) for c in row.index), axis=1)
     ct_count = ct_count.loc[total_hrs.sort_values(ascending=True).index]
     ct_rate = ct_rate.reindex(ct_count.index)
@@ -1716,13 +1714,7 @@ def _render_section10(
     # Y-axis: age groups sorted descending (oldest at top → reversed for Plotly)
     age_labels = df_binned[age_col].astype(str).unique().tolist()
 
-    def _age_sort_key(label: str) -> int:
-        """Extract the first number from an age-group label for sorting."""
-        import re
-        match = re.search(r"\d+", label)
-        return int(match.group()) if match else 0
-
-    sorted_age = sorted(age_labels, key=_age_sort_key, reverse=True)  # oldest at top
+    sorted_age = sorted(age_labels, key=bin_label_sort_key, reverse=True)  # oldest at top
 
     # X-axis: occupations sorted by overall High Income Rate descending
     rate_by_occ = hi_mask.groupby(df_binned[occ_col].astype(str)).mean()
@@ -1731,12 +1723,8 @@ def _render_section10(
     fig = _chart_crosstab_heatmap(
         df_binned, income_col, age_col, occ_col,
         title="High Income Rate: Age Group × Occupation",
-        colorscale=[
-            [0.0, "rgba(255,255,255,0.03)"],
-            [0.3, "rgba(255,159,67,0.20)"],
-            [0.6, "rgba(255,159,67,0.45)"],
-            [1.0, "rgba(255,159,67,0.80)"],
-        ],
+        colorscale=_AMBER_SCALE,
+        fmt_pct=True,
     )
     fig.update_layout(
         height=350,
@@ -2246,33 +2234,10 @@ def _render_section15(
 
     # Key Takeaway card — full-width
     if bullets:
-        bullet_html = "".join(
-            f"<li style='margin-bottom:10px;line-height:1.7;'>{b}</li>"
-            for b in bullets
-        )
         st.markdown(
-            f"<div style='"
-            f"background:rgba(255,159,67,0.05);"
-            f"border:1px solid rgba(255,159,67,0.15);"
-            f"border-left:3px solid rgba(255,159,67,0.65);"
-            f"border-radius:0 12px 12px 0;"
-            f"padding:18px 22px;"
-            f"margin-bottom:8px;"
-            f"'>"
-            f"<div style='font-size:0.67rem;font-weight:700;"
-            f"color:rgba(255,159,67,0.65);"
-            f"text-transform:uppercase;letter-spacing:1.2px;"
-            f"margin-bottom:10px;'"
-            f"'>" + get_icon('zap', size=13, color='rgba(255,159,67,0.65)') + " Key Takeaway</div>"
-            f"<ul style='"
-            f"font-size:0.82rem;"
-            f"color:rgba(255,255,255,0.72);"
-            f"padding-left:18px;"
-            f"margin:0;"
-            f"list-style-type:disc;"
-            f"display:flex;flex-wrap:wrap;gap:0 40px;"
-            f"'>{bullet_html}</ul>"
-            f"</div>",
+            _insight_list_box(
+                bullets, title="Key Takeaway", icon="zap", flex_wrap=True,
+            ),
             unsafe_allow_html=True,
         )
 
@@ -2449,12 +2414,12 @@ def main() -> None:
         with col_t1a:
             _render_section1(df_raw, income_col)
         with col_t1b:
-            _render_section2(df_binned, income_col)
+            _render_section2(df_raw, income_col)
 
         _row_spacer()
 
-        # Demographic Breakdown — top 4 associated features (from binned data)
-        _render_section4(df_binned, income_col)
+        # Demographic Breakdown — top 4 correlated features
+        _render_section4(df_raw, df_binned, income_col)
 
     # =================================================================
     # TAB 2 — Career & Demographics

@@ -499,6 +499,7 @@ class UiComponents:
         cat_demo_tags = "".join(_tag(k, CAT_HL,   "anatomy-tag-orange") for k in t('overview_anatomy_cat_demo_tags').split(","))
         cat_fam_tags  = "".join(_tag(k, CAT_HL,   "anatomy-tag-orange") for k in t('overview_anatomy_cat_fam_tags').split(","))
         fin_tags      = "".join(_tag(k, FIN_HL,   "anatomy-tag-orange") for k in t('overview_anatomy_fin_tags').split(","))
+        meta_tags     = "".join(f'<span class="anatomy-tag" style="background: transparent; color: rgba(255,255,255,0.5); border: 1px dashed rgba(255,255,255,0.2); text-decoration: line-through; padding: 2px 10px;">{k.strip()}</span>' for k in t('overview_anatomy_meta_tags').split(","))
         target_tags   = "".join(f'<span class="anatomy-tag anatomy-tag-red">{v.strip()}</span>' for v in t('overview_anatomy_target_value').split(","))
         # -- Objective icons from centralized registry --
         icon_bar_chart = get_icon("bar_chart", size=22)
@@ -630,6 +631,19 @@ class UiComponents:
                     <span style="color: white; font-weight: bold; font-size: 0.95rem;">{t('overview_anatomy_target_label')}</span>
                     {target_tags}
                 </div>
+            </div>
+            <div class="anatomy-box" style="
+                border: 1px dashed rgba(255,255,255,0.12);
+                border-left: 3px solid rgba(255,255,255,0.2) !important;
+                background: repeating-linear-gradient(-45deg, rgba(255,255,255,0.015), rgba(255,255,255,0.015) 10px, transparent 10px, transparent 20px);
+                margin-top: 12px;
+            ">
+                <div class="anatomy-title" style="color: rgba(255,255,255,0.55); display: flex; align-items: center; gap: 6px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>
+                    {t('overview_anatomy_meta_title')}
+                </div>
+                <div class="anatomy-tags" style="margin-top: 6px;">{meta_tags}</div>
+                <div class="anatomy-note" style="color: rgba(255,255,255,0.45);">{t('overview_anatomy_meta_note')}</div>
             </div>
         </div>
     </div>
@@ -2021,6 +2035,84 @@ class UiComponents:
                     '• <b style="color:#F59E0B;">One-Hot Encoding</b>: nominal columns → binary indicators (<code>drop_first=True</code> to avoid multicollinearity)<br>'
                     '• <b style="color:#F59E0B;">Drop (Redundant)</b>: columns with a numeric counterpart already in dataset'
                 )
+
+                # ── Encoding Detail Report ─────────────────────────────────
+                st.markdown(
+                    f'<div style="display:flex; align-items:center; gap:10px;'
+                    f' margin:24px 0 14px 0;">'
+                    f'<div style="width:4px; height:18px; border-radius:2px;'
+                    f' background:{col_hex}; flex-shrink:0;"></div>'
+                    f'<span style="font-size:1rem; font-weight:700;'
+                    f' color:rgba(255,255,255,0.85); letter-spacing:-0.2px;">'
+                    f'Encoding Detail Report</span></div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    '<div style="font-size:0.78rem; color:rgba(255,255,255,0.35);'
+                    ' margin:-8px 0 14px 14px; line-height:1.6;">'
+                    'Expand each column to view the exact <b style="color:rgba(255,255,255,0.55);">'
+                    'value → encoded code</b> mapping that will be applied during pipeline execution.</div>',
+                    unsafe_allow_html=True,
+                )
+
+                detail_report = PreprocessingEngine.get_encoding_detail_report(
+                    df, candidates=candidates, binning_config=binning_cfg,
+                )
+
+                # ── Color map for encoding type badges ──────────────────
+                _enc_badge_colors = {
+                    ENC_LABEL: ("#EC4899", "rgba(236,72,153,0.12)"),
+                    ENC_ONEHOT: ("#3B82F6", "rgba(59,130,246,0.12)"),
+                    ENC_DROP_REDUNDANT: ("#F59E0B", "rgba(245,158,11,0.12)"),
+                }
+
+                for report_item in detail_report:
+                    r_col = report_item["Column"]
+                    r_enc = report_item["Encoding"]
+                    r_reason = report_item["Reason"]
+                    r_mapping = report_item["Mapping"]
+                    badge_color, badge_bg = _enc_badge_colors.get(
+                        r_enc, ("#EC4899", "rgba(236,72,153,0.12)")
+                    )
+                    n_mappings = len(r_mapping)
+
+                    # Build expander label
+                    expander_label = f"**{r_col}**  ·  {r_enc}  ·  {r_reason}"
+
+                    with st.expander(expander_label, expanded=False):
+                        # ── Badge row ────────────────────────────────────
+                        st.markdown(
+                            f'<div style="display:flex; gap:8px; flex-wrap:wrap;'
+                            f' margin-bottom:12px;">'
+                            f'<span style="background:{badge_bg}; color:{badge_color};'
+                            f' padding:3px 10px; border-radius:6px; font-size:0.7rem;'
+                            f' font-weight:700; letter-spacing:0.5px;">{r_enc}</span>'
+                            f'<span style="background:rgba(255,255,255,0.04);'
+                            f' color:rgba(255,255,255,0.45); padding:3px 10px;'
+                            f' border-radius:6px; font-size:0.7rem; font-weight:600;">'
+                            f'{n_mappings} values</span>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                        if r_enc == ENC_DROP_REDUNDANT:
+                            st.markdown(
+                                f'<div style="margin:4px 0 8px 0; padding:10px 14px;'
+                                f' background:rgba(245,158,11,0.06);'
+                                f' border-left:2px solid rgba(245,158,11,0.4);'
+                                f' border-radius:0 8px 8px 0;'
+                                f' font-size:0.8rem; color:rgba(255,255,255,0.45);">'
+                                f'This column will be <b style="color:#F59E0B;">dropped entirely</b>'
+                                f' — {r_reason}.</div>',
+                                unsafe_allow_html=True,
+                            )
+                        elif r_mapping:
+                            mapping_df = pd.DataFrame(r_mapping)
+                            st.dataframe(
+                                mapping_df,
+                                use_container_width=True,
+                                hide_index=True,
+                            )
             else:
                 _skip_card("No categorical columns found — this step will be skipped.")
 
