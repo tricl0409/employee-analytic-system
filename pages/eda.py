@@ -101,9 +101,7 @@ def _resolve_cols(df: pd.DataFrame) -> dict[str, str | None]:
     }
 
 
-def _high_mask(series: pd.Series) -> pd.Series:
-    """Boolean mask: True where income >50K."""
-    return series.astype(str).str.strip().str.lower().str.contains(r">50k", regex=True, na=False)
+from modules.utils.helpers import _high_mask
 
 
 def _apply_binning_onthefly(df: pd.DataFrame) -> pd.DataFrame:
@@ -739,7 +737,43 @@ def _render_section3(
                 colorscale=_AMBER_SCALE,
                 fmt_pct=True,
             )
+            # Inject LGBT Rainbow flag for Male - Wife
+            rainbow_shapes = []
+            if "Wife" in sorted_rel:
+                try:
+                    # 'Female', 'Male' are the unique categories in x
+                    x_cats = sorted(df_binned[sex_col].dropna().unique().astype(str).tolist())
+                    if "Male" in x_cats:
+                        x_idx = x_cats.index("Male")
+                        y_idx = sorted_rel.index("Wife")
+                        # LGBT 6 Colors: Red, Orange, Yellow, Green, Blue, Violet
+                        colors = ["#FF0018", "#FFA52C", "#FFFF41", "#008018", "#0000F9", "#86007D"]
+                        h = 1.0 / len(colors)
+                        # Plotly default for heatmap might place y=0 at top if category order is preserved
+                        # so smaller y coordinates are higher up. Red first is typically correct.
+                        # Wait, if y=0 is bottom, then smaller y is bottom.
+                        # We use `y0=y_idx - 0.5 + ...` which aligns exactly with cell bounds.
+                        
+                        # Add reversed ordered check if needed, but standard is red at top
+                        # We will order them from -0.5 (top if reversed/bottom if not) 
+                        # We need red at top: If Wife is visually top, visually top is index 0. Smaller y is top. 
+                        for i, color in enumerate(colors):
+                            rainbow_shapes.append(dict(
+                                type="rect",
+                                xref="x", yref="y",
+                                x0=x_idx - 0.5, x1=x_idx + 0.5,
+                                y0=(y_idx - 0.5) + i * h,
+                                y1=(y_idx - 0.5) + (i + 1) * h,
+                                fillcolor=color,
+                                opacity=0.25,  # Subtle enough to let text stand out
+                                layer="above",
+                                line_width=0,
+                            ))
+                except Exception:
+                    pass
+
             fig_rel.update_layout(
+                shapes=rainbow_shapes,
                 xaxis=dict(title=dict(text="")),
                 yaxis=dict(
                     title=dict(text=""),

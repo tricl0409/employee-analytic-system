@@ -404,6 +404,30 @@ STRINGS = {
         "eda_select_color": "Color By",
 
         # ==========================================================================
+        # CONCLUSION
+        # ==========================================================================
+        "conclusion_title": "Conclusion & Archetype Profile",
+        "conclusion_subtitle": "Interactive portrait of the typical High-Income earner — synthesized from all analysis dimensions.",
+        "conclusion_computing": "Computing High-Income Archetype…",
+        "conclusion_no_income": "Could not compute archetype — no income column found.",
+        "conclusion_archetype_title": "High-Income Archetype",
+        "conclusion_archetype_hint_long": "Click the persona at the center of the wheel to reveal key characteristics",
+        "conclusion_wheel_gender": "GENDER",
+        "conclusion_wheel_age": "AGE",
+        "conclusion_wheel_education": "EDUCATION",
+        "conclusion_wheel_occupation": "OCCUPATION",
+        "conclusion_wheel_marital": "MARITAL",
+        "conclusion_wheel_hours": "HOURS/WK",
+        "conclusion_wheel_capital_gain": "CAPITAL GAIN",
+        "conclusion_wheel_median": "Median {val}",
+        "conclusion_wheel_iqr": "IQR {q1}–{q3} yrs",
+        "conclusion_wheel_pct_high": "{pct}% of high earners",
+        "conclusion_wheel_overtime": "{pct}% overtime",
+        "conclusion_wheel_invest": "have investment income",
+        "conclusion_wheel_click": "Click to reveal",
+        "conclusion_wheel_based_on": "Based on <b>{count}</b> High Income earners &nbsp;·&nbsp; <b>{pct}%</b> of dataset",
+
+        # ==========================================================================
         # ADMIN SETTINGS
         # ==========================================================================
         "admin_settings": "Analytic Rule Settings",

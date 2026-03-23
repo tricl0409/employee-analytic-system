@@ -32,3 +32,9 @@ def save_temp_csv(df, prefix: str = "temp") -> None:
     """
     from modules.utils.session_debug import _dump_to_temp
     _dump_to_temp(prefix, df)
+
+# ── Shared Data Logics ─────────────────────────────────────────────────────────────
+
+def _high_mask(series):
+    """Returns a boolean mask for >50K income."""
+    return series.astype(str).str.strip().str.lower().str.contains(r">50k", regex=True, na=False)

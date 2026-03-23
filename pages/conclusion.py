@@ -20,6 +20,7 @@ from modules.ui import page_header, workspace_status, active_file_scan_progress_
 from modules.ui.components import styled_alert
 from modules.ui.icons import get_icon
 from modules.utils.helpers import _ensure_workspace_active
+from modules.utils.localization import get_text
 
 
 # ==============================================================================
@@ -35,27 +36,20 @@ _AMBER_BORDER = "rgba(255,159,67,0.22)"
 # COLUMN RESOLVER & INCOME MASK
 # ==============================================================================
 
-def _norm(s: str) -> str:
-    return s.lower().replace("_", "").replace("-", "").replace(" ", "")
-
-
 def _resolve(df: pd.DataFrame) -> dict:
-    lookup = {_norm(c): c for c in df.columns}
-    ALIASES = {
-        "income":       ["income", "salary", "incomelabel"],
-        "age":          ["age"],
-        "education":    ["education", "educationnum", "education_num"],
-        "occupation":   ["occupation", "job"],
-        "hours":        ["hoursperweek", "workinghours", "hours"],
-        "sex":          ["sex", "gender"],
-        "marital":      ["maritalstatus", "marital"],
-        "capital_gain": ["capitalgain", "capgain", "capital_gain"],
+    """Map expected archetype features to exact standardized column names."""
+    return {
+        "income": "income" if "income" in df.columns else None,
+        "age": "age" if "age" in df.columns else None,
+        "education": "education" if "education" in df.columns else "education_num" if "education_num" in df.columns else None,
+        "occupation": "occupation" if "occupation" in df.columns else None,
+        "hours": "hours_per_week" if "hours_per_week" in df.columns else None,
+        "sex": "sex" if "sex" in df.columns else "gender" if "gender" in df.columns else None,
+        "marital": "marital_status" if "marital_status" in df.columns else None,
+        "capital_gain": "capital_gain" if "capital_gain" in df.columns else None,
     }
-    return {k: next((lookup[a] for a in v if a in lookup), None) for k, v in ALIASES.items()}
 
-
-def _high_mask(series: pd.Series) -> pd.Series:
-    return series.astype(str).str.strip().str.lower().str.contains(r">50k", regex=True, na=False)
+from modules.utils.helpers import _high_mask
 
 
 def _apply_binning(df: pd.DataFrame) -> pd.DataFrame:
@@ -158,8 +152,9 @@ def _compute_archetype(df: pd.DataFrame) -> dict:
 # PERSONA WHEEL — HTML/CSS/JS COMPONENT
 # ==============================================================================
 
-def _persona_wheel_html(arch: dict) -> str:
+def _persona_wheel_html(arch: dict, lang: str) -> str:
     """Generate the full interactive persona wheel as a self-contained HTML page."""
+    t = lambda k, **kw: get_text(k, lang, **kw)
 
     gender_info = arch.get("gender", {})
     is_male = gender_info.get("is_male", True)
@@ -183,37 +178,37 @@ def _persona_wheel_html(arch: dict) -> str:
     # 7 segments positioned around the wheel
     segments = [
         {
-            "label": "GENDER", "value": f"{gender_label}", "sub": f"{gender_pct}% of high earners",
+            "label": t('conclusion_wheel_gender'), "value": f"{gender_label}", "sub": t('conclusion_wheel_pct_high', pct=gender_pct),
             "color": "#FF9F43", "angle": -90,
         },
         {
-            "label": "AGE", "value": f"Median {age_info.get('median', '—')}",
-            "sub": f"IQR {age_info.get('q1', '—')}–{age_info.get('q3', '—')} yrs",
+            "label": t('conclusion_wheel_age'), "value": t('conclusion_wheel_median', val=age_info.get('median', '—')),
+            "sub": t('conclusion_wheel_iqr', q1=age_info.get('q1', '—'), q3=age_info.get('q3', '—')),
             "color": "#3B82F6", "angle": -90 + 360 / 7,
         },
         {
-            "label": "EDUCATION", "value": f"{edu.get('label', '—')}",
+            "label": t('conclusion_wheel_education'), "value": f"{edu.get('label', '—')}",
             "sub": f"{edu.get('pct', 0)}%",
             "color": "#10B981", "angle": -90 + 2 * 360 / 7,
         },
         {
-            "label": "OCCUPATION", "value": f"{occ.get('label', '—')}",
+            "label": t('conclusion_wheel_occupation'), "value": f"{occ.get('label', '—')}",
             "sub": f"{occ.get('pct', 0)}%",
             "color": "#F59E0B", "angle": -90 + 3 * 360 / 7,
         },
         {
-            "label": "MARITAL", "value": f"{marital.get('label', '—')}",
+            "label": t('conclusion_wheel_marital'), "value": f"{marital.get('label', '—')}",
             "sub": f"{marital.get('pct', 0)}%",
             "color": "#8B5CF6", "angle": -90 + 4 * 360 / 7,
         },
         {
-            "label": "HOURS/WK", "value": f"Avg {hours.get('avg', '—')}h",
-            "sub": f"{hours.get('pct_overtime', 0)}% overtime",
+            "label": t('conclusion_wheel_hours'), "value": f"Avg {hours.get('avg', '—')}h",
+            "sub": t('conclusion_wheel_overtime', pct=hours.get('pct_overtime', 0)),
             "color": "#EC4899", "angle": -90 + 5 * 360 / 7,
         },
         {
-            "label": "CAPITAL GAIN", "value": f"{cg.get('pct', 0)}%",
-            "sub": "have investment income",
+            "label": t('conclusion_wheel_capital_gain'), "value": f"{cg.get('pct', 0)}%",
+            "sub": t('conclusion_wheel_invest'),
             "color": "#6366F1", "angle": -90 + 6 * 360 / 7,
         },
     ]
@@ -370,13 +365,13 @@ body{{background:transparent;font-family:'Inter',-apple-system,sans-serif;color:
     </svg>
     <div class="center" onclick="document.getElementById('W').classList.toggle('R')">
         <svg viewBox="0 0 100 100">{persona_svg}</svg>
-        <div class="hint">Click to reveal</div>
+        <div class="hint">{t('conclusion_wheel_click')}</div>
     </div>
     {labels_html}
 </div>
 
 <div class="sbar">
-    Based on <b>{high_count:,}</b> High Income earners &nbsp;·&nbsp; <b>{high_pct}%</b> of dataset
+    {t('conclusion_wheel_based_on', count=f'{high_count:,}', pct=high_pct)}
 </div>
 </body></html>"""
 
@@ -389,8 +384,8 @@ def main() -> None:
     lang = st.session_state.get("lang", "en")
 
     page_header(
-        title="Conclusion & Archetype Profile",
-        subtitle="Interactive portrait of the typical High-Income earner — synthesized from all analysis dimensions.",
+        title=get_text('conclusion_title', lang),
+        subtitle=get_text('conclusion_subtitle', lang),
     )
 
     _ensure_workspace_active()
@@ -403,7 +398,7 @@ def main() -> None:
     active_file_scan_progress_bar("_conclusion_done")
 
     if df_raw.empty:
-        styled_alert("No data loaded. Please upload and activate a dataset first.", "warning")
+        styled_alert(get_text('empty_state_msg', lang), "warning")
         return
 
     # ── Compute archetype ──────────────────────────────────────────────
@@ -413,14 +408,14 @@ def main() -> None:
         cache_key not in st.session_state
         or st.session_state.get(size_key) != len(df_raw)
     ):
-        with st.spinner("Computing High-Income Archetype…"):
+        with st.spinner(get_text('conclusion_computing', lang)):
             st.session_state[cache_key] = _compute_archetype(df_raw)
             st.session_state[size_key] = len(df_raw)
 
     arch = st.session_state[cache_key]
 
     if not arch:
-        styled_alert("Could not compute archetype — no income column found.", "warning")
+        styled_alert(get_text('conclusion_no_income', lang), "warning")
         return
 
     # ── Section header ─────────────────────────────────────────────────
@@ -436,17 +431,17 @@ def main() -> None:
         f"<div style='display:flex;align-items:center;gap:10px;'>"
         f"{icon_svg}"
         f"<span style='font-size:1.08rem;font-weight:800;color:rgba(255,255,255,0.92);"
-        f"letter-spacing:-0.3px;'>High-Income Archetype</span>"
+        f"letter-spacing:-0.3px;'>{get_text('conclusion_archetype_title', lang)}</span>"
         f"</div>"
         f"<div style='font-size:0.76rem;color:rgba(255,255,255,0.38);margin-top:4px;'>"
-        f"Click the persona at the center of the wheel to reveal key characteristics"
+        f"{get_text('conclusion_archetype_hint_long', lang)}"
         f"</div>"
         f"</div>",
         unsafe_allow_html=True,
     )
 
     # ── Render persona wheel ───────────────────────────────────────────
-    html_content = _persona_wheel_html(arch)
+    html_content = _persona_wheel_html(arch, lang)
     components.html(html_content, height=660, scrolling=False)
 
 
