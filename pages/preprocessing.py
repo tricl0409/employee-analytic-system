@@ -20,22 +20,23 @@ All tab / panel rendering is delegated to UiComponents:
 CSS is managed centrally in modules/ui/styles.py (PREPROCESSING_STYLES).
 """
 
-import os
+import io
 import time
+import zipfile
 
 import pandas as pd
 import streamlit as st
 
 from modules.core import data_engine, preprocessing_engine
-from modules.core.file_manager import UPLOADS_DIR, save_dataframe
+from modules.core.file_manager import save_with_auto_increment
 from modules.core.preprocessing_engine import (
     PreprocessingEngine,
     ENC_LABEL, ENC_ONEHOT, ENC_DROP_REDUNDANT,
     SCALER_STANDARD, SCALER_ROBUST,
+    compute_after_metrics,
 )
 from modules.core.audit_engine import (
     _get_safe_zones,
-    _compute_noise_mask,
     _get_cat_columns,
     default_outlier_threshold,
 )
@@ -48,6 +49,7 @@ from modules.ui import (
     render_pipeline_sidebar,
     render_detail_panel,
 )
+from modules.ui.visualizer import chart_target_correlation
 
 from modules.utils.localization import get_text
 from modules.utils.helpers import _ensure_workspace_active
@@ -62,10 +64,8 @@ def _run_pipeline(
     engine,
     active_file: str,
     rows_original: int,
-    lang: str,
 ) -> pd.DataFrame:
-    """
-    Execute the full 9-step fixed preprocessing pipeline with live progress.
+    """Execute the full 9-step fixed preprocessing pipeline with live progress.
 
     Pipeline order:
       1. Standardize & Type Cast (trim whitespace, normalize casing, convert dtypes)
@@ -79,19 +79,16 @@ def _run_pipeline(
       8. Feature Encoding        (apply_feature_encoding: label + one-hot)
       9. Feature Scaling         (apply_feature_scaling: StandardScaler / RobustScaler)
 
-    On completion, the cleaned DataFrame is saved as
-    ``<original_stem>_cleaned.csv`` (auto-incremented if the file already
-    exists), the workspace is switched to the new file, and
-    ``st.session_state['preprocessing_result']`` is populated.
+    On completion, three output files are saved via ``save_with_auto_increment``:
+      - ``_cleaned.csv``        — after Step 5 (raw cleaned data)
+      - ``_encoded.csv``        — after Step 9 (full pipeline output)
+      - ``_numeric_trans.csv``  — cleaned + domain-knowledge ordinal encoding
 
     Args:
         df:            Working DataFrame (copy of raw data).
         engine:        ``PreprocessingEngine`` class reference.
         active_file:   Basename of the currently active workspace file.
-        rows_original: Row count of the raw DataFrame *before* any step,
-                       captured by the caller so the completion banner always
-                       shows the true pre-pipeline count.
-        lang:          Active UI language code.
+        rows_original: Row count of the raw DataFrame *before* any step.
 
     Returns:
         Cleaned DataFrame after all 9 steps.
@@ -139,16 +136,13 @@ def _run_pipeline(
 
     # ── Step 4: Missing Value Handling ─────────────────────────────────
     progress.progress(0.38, text=STEPS[3][0])
-    missing_before_fill = int(df.isna().sum().sum())
     df = engine.impute_missing(df)
-    missing_after_fill = int(df.isna().sum().sum())
     time.sleep(0.1)
 
     # ── Step 5: Per-column outlier treatment ────────────────────────────────
     progress.progress(0.50, text=STEPS[4][0])
     numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
     total_outliers_before = 0
-    outlier_cols_treated = 0
     for col in numeric_cols:
         row = PreprocessingEngine.compute_outlier_preview_row(df, col, safe_zones)
         if row is None or row["Outliers Detected"] == 0:
@@ -156,21 +150,16 @@ def _run_pipeline(
         total_outliers_before += row["Outliers Detected"]
         col_threshold = default_outlier_threshold(row["detect_key"])
         df = engine.handle_outliers(df, row["treatment_method"], [col], col_threshold)
-        outlier_cols_treated += 1
     time.sleep(0.1)
 
     # ── Save cleaned file (after Step 5) ──────────────────────────────────
     progress.progress(0.56, text=":material/save: Saving cleaned dataset...")
-    df_cleaned_snapshot = df.copy()          # freeze state before Steps 6-9 mutate
+    df_cleaned_snapshot = df.copy()
     basename  = active_file.replace("\\", "/").split("/")[-1]
     base_stem = basename.replace(".csv", "")
-    cleaned_filename = f"{base_stem}_cleaned.csv"
-    counter = 1
-    while os.path.exists(os.path.join(UPLOADS_DIR, cleaned_filename)):
-        cleaned_filename = f"{base_stem}_cleaned_{counter}.csv"
-        counter += 1
-    save_dataframe(df_cleaned_snapshot, cleaned_filename)
-    df_cleaned_csv = df_cleaned_snapshot.to_csv(index=False).encode("utf-8")
+    cleaned_filename, df_cleaned_csv = save_with_auto_increment(
+        df_cleaned_snapshot, base_stem, "_cleaned",
+    )
 
     # ── Step 6: Log Transformation ─────────────────────────────────────
     progress.progress(0.62, text=STEPS[5][0])
@@ -185,74 +174,64 @@ def _run_pipeline(
     # ── Step 8: Feature Encoding ──────────────────────────────────────
     progress.progress(0.78, text=STEPS[7][0])
     from modules.utils.db_config_manager import get_rule as _get_rule_pipeline
-    _binning_cfg = _get_rule_pipeline("binning_config") or {}
-    candidates = engine.get_encoding_preview(df, binning_config=_binning_cfg)
-    n_label = sum(1 for c in candidates if c["Encoding"] == ENC_LABEL)
-    n_onehot = sum(1 for c in candidates if c["Encoding"] == ENC_ONEHOT)
+    binning_cfg = _get_rule_pipeline("binning_config") or {}
+    candidates = engine.get_encoding_preview(df, binning_config=binning_cfg)
+    n_label     = sum(1 for c in candidates if c["Encoding"] == ENC_LABEL)
+    n_onehot    = sum(1 for c in candidates if c["Encoding"] == ENC_ONEHOT)
     n_redundant = sum(1 for c in candidates if c["Encoding"] == ENC_DROP_REDUNDANT)
-    df = engine.apply_feature_encoding(df, candidates)
+    df = engine.apply_feature_encoding(df, candidates, binning_config=binning_cfg)
     time.sleep(0.1)
 
     # ── Step 9: Feature Scaling ───────────────────────────────────────
     progress.progress(0.88, text=STEPS[8][0])
     scaling_candidates = engine.get_scaling_preview(df)
     n_standard = sum(1 for c in scaling_candidates if c["Method"] == SCALER_STANDARD)
-    n_robust = sum(1 for c in scaling_candidates if c["Method"] == SCALER_ROBUST)
+    n_robust   = sum(1 for c in scaling_candidates if c["Method"] == SCALER_ROBUST)
     df = engine.apply_feature_scaling(df, scaling_candidates)
     time.sleep(0.1)
 
     # ── Save encoded file (after Step 9) ──────────────────────────────────
     progress.progress(0.95, text=":material/save: Saving encoded dataset...")
-    encoded_filename = f"{base_stem}_encoded.csv"
-    counter = 1
-    while os.path.exists(os.path.join(UPLOADS_DIR, encoded_filename)):
-        encoded_filename = f"{base_stem}_encoded_{counter}.csv"
-        counter += 1
-    save_dataframe(df, encoded_filename)
-    df_encoded_csv = df.to_csv(index=False).encode("utf-8")
+    encoded_filename, df_encoded_csv = save_with_auto_increment(
+        df, base_stem, "_encoded",
+    )
+
+    # ── Save numeric-transformed file (cleaned + domain-knowledge encoding) ──
+    progress.progress(0.97, text=":material/save: Saving numeric-transformed dataset...")
+    df_numeric_trans = data_engine.encode_for_correlation(df_cleaned_snapshot)
+    numeric_trans_filename, df_numeric_trans_csv = save_with_auto_increment(
+        df_numeric_trans, base_stem, "_numeric_trans",
+    )
 
     progress.progress(1.0, text=":material/check_circle: Preprocessing complete!")
     time.sleep(0.4)
     progress.empty()
 
-    # ── Compute "after" quality metrics from cleaned data (Step 5) ─────
-    after_missing = int(df_cleaned_snapshot.isna().sum().sum())
-    after_dupes   = int(df_cleaned_snapshot.duplicated().sum())
-
-    # Re-compute noise after cleaning — delegate to single source of truth
-    _cat_after = df_cleaned_snapshot.select_dtypes(include=["object"]).columns.tolist()
-    after_noise = 0
-    for _col_name in _cat_after:
-        _series = df_cleaned_snapshot[_col_name].dropna().astype(str)
-        after_noise += int(_compute_noise_mask(_series).sum())
-
-    # All detected outliers were capped to their statistical fence boundaries,
-    # so by definition they no longer exceed the original thresholds.
-    # Re-detecting with fresh statistics would cause "fence compression"
-    # (tighter distribution → narrower bounds → spurious new outliers).
-    after_outliers = 0
+    # ── Compute "after" quality metrics (delegated to core) ───────────────
+    comparison = compute_after_metrics(
+        df_cleaned_snapshot,
+        initial_missing,
+        noise_cleaned,
+        initial_dupes,
+        total_outliers_before,
+    )
 
     # ── Update session state ──────────────────────────────────────────────
-    # Workspace switches to the _cleaned file (data quality focus)
     st.session_state["active_file"]          = cleaned_filename
     st.session_state["_preprocessing_file"]  = cleaned_filename
-    st.session_state["cleaned_data"]         = None   # force reload on next visit
+    st.session_state["cleaned_data"]         = None
     st.session_state["preprocessing_done"]   = True
     st.session_state["preprocessing_result"] = {
-        "cleaned_filename":  cleaned_filename,
-        "encoded_filename":  encoded_filename,
-        "rows_before":       rows_original,
-        "rows_after":        len(df),
-        "dupes_dropped":     dupes_dropped,
-        "df_cleaned_csv":    df_cleaned_csv,
-        "df_encoded_csv":    df_encoded_csv,
-        # Comparison table — all "after" values computed from df_cleaned_snapshot
-        "comparison": [
-            ("Missing Values",  initial_missing + noise_cleaned, after_missing),
-            ("Noise Values",    noise_cleaned, after_noise),
-            ("Duplicate Rows",  initial_dupes, after_dupes),
-            ("Outliers",        total_outliers_before, after_outliers),
-        ],
+        "cleaned_filename":      cleaned_filename,
+        "encoded_filename":      encoded_filename,
+        "numeric_trans_filename": numeric_trans_filename,
+        "rows_before":           rows_original,
+        "rows_after":            len(df),
+        "dupes_dropped":         dupes_dropped,
+        "df_cleaned_csv":        df_cleaned_csv,
+        "df_encoded_csv":        df_encoded_csv,
+        "df_numeric_trans_csv":  df_numeric_trans_csv,
+        "comparison":            comparison,
         # Encoding summary
         "n_label_encoded":     n_label,
         "n_onehot_encoded":    n_onehot,
@@ -261,8 +240,8 @@ def _run_pipeline(
         "n_standard_scaled":   n_standard,
         "n_robust_scaled":     n_robust,
         "scaling_candidates":  scaling_candidates,
-        # Correlation matrix (post-encoding, for target correlation chart)
-        "corr_after":  df.select_dtypes(include=["number"]).corr(),
+        # Correlation matrix (from numeric_trans — cleaned + domain-knowledge encoding)
+        "corr_after":  df_numeric_trans.select_dtypes(include=["number"]).corr(),
     }
 
     return df
@@ -310,92 +289,23 @@ def main():
     result = st.session_state.get("preprocessing_result", {})
 
     if done:
-        cleaned_file  = result.get("cleaned_filename", "cleaned.csv")
-        encoded_file  = result.get("encoded_filename", "encoded.csv")
-        rows_bef      = result.get("rows_before", 0)
-        rows_aft      = result.get("rows_after", 0)
-        dupes         = result.get("dupes_dropped", 0)
-        df_cleaned_csv = result.get("df_cleaned_csv", b"")
-        df_encoded_csv = result.get("df_encoded_csv", b"")
+        cleaned_file       = result.get("cleaned_filename", "cleaned.csv")
+        encoded_file       = result.get("encoded_filename", "encoded.csv")
+        numeric_trans_file = result.get("numeric_trans_filename", "numeric_trans.csv")
+        rows_bef           = result.get("rows_before", 0)
+        rows_aft           = result.get("rows_after", 0)
+        dupes              = result.get("dupes_dropped", 0)
+        df_cleaned_csv     = result.get("df_cleaned_csv", b"")
+        df_encoded_csv     = result.get("df_encoded_csv", b"")
+        df_numeric_trans_csv = result.get("df_numeric_trans_csv", b"")
 
         pipeline_done_banner(cleaned_file, rows_bef, rows_aft, dupes, stats=result)
 
-        # ── Target Correlation: Income ────────────────────────────────────
-        import plotly.graph_objects as go  # noqa: E402 (lazy import)
-
+        # ── Target Correlation Chart ──────────────────────────────────────
         corr_after = result.get("corr_after")
-
         if corr_after is not None:
-            # Find Income column (case-insensitive)
-            income_col = None
-            for col_name in corr_after.columns:
-                if col_name.lower() == "income":
-                    income_col = col_name
-                    break
-
-            if income_col is not None:
-                # Extract correlations with Income, excluding self
-                target_corr = corr_after[income_col].drop(income_col, errors="ignore")
-                target_corr = target_corr.dropna()
-
-                # Sort by absolute value descending
-                target_corr = target_corr.reindex(
-                    target_corr.abs().sort_values(ascending=True).index
-                )
-
-                # Color: teal for positive, pink for negative
-                colors = [
-                    "#2DD4BF" if val >= 0 else "#F472B6"
-                    for val in target_corr.values
-                ]
-
-                n_features = len(target_corr)
-                chart_height = max(360, n_features * 26 + 80)
-
-                fig = go.Figure(
-                    data=go.Bar(
-                        x=target_corr.values,
-                        y=target_corr.index.tolist(),
-                        orientation="h",
-                        marker=dict(
-                            color=colors,
-                            line=dict(width=0),
-                            opacity=0.85,
-                        ),
-                        text=[f"{v:+.3f}" for v in target_corr.values],
-                        textposition="outside",
-                        textfont=dict(size=10, color="rgba(255,255,255,0.6)"),
-                        hovertemplate=(
-                            "<b>%{y}</b><br>"
-                            "r = %{x:+.4f}<extra></extra>"
-                        ),
-                    )
-                )
-
-                fig.update_layout(
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(0,0,0,0)",
-                    font=dict(color="rgba(255,255,255,0.6)", family="Inter"),
-                    margin=dict(l=10, r=60, t=10, b=10),
-                    height=chart_height,
-                    xaxis=dict(
-                        range=[-1.05, 1.05],
-                        zeroline=True,
-                        zerolinecolor="rgba(255,255,255,0.12)",
-                        zerolinewidth=1,
-                        showgrid=True,
-                        gridcolor="rgba(255,255,255,0.04)",
-                        tickfont=dict(size=9, color="rgba(255,255,255,0.4)"),
-                        dtick=0.2,
-                    ),
-                    yaxis=dict(
-                        tickfont=dict(size=10, color="rgba(255,255,255,0.6)"),
-                        showgrid=False,
-                    ),
-                    bargap=0.25,
-                )
-
-                # Section title
+            fig = chart_target_correlation(corr_after, target_col="income")
+            if fig is not None:
                 st.markdown(
                     '<div style="font-size:0.75rem;font-weight:700;'
                     'color:rgba(255,255,255,0.5);text-transform:uppercase;'
@@ -409,12 +319,11 @@ def main():
                 st.plotly_chart(fig, use_container_width=True, key="target_corr")
 
         # ── Download buttons ──────────────────────────────────────────────
-        import io, zipfile  # noqa: E402
-
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
             zf.writestr(cleaned_file, df_cleaned_csv)
             zf.writestr(encoded_file, df_encoded_csv)
+            zf.writestr(numeric_trans_file, df_numeric_trans_csv)
         zip_bytes = zip_buffer.getvalue()
 
         base_stem = cleaned_file.replace("_cleaned.csv", "")
@@ -518,7 +427,7 @@ def main():
             btn_placeholder.empty()
             rows_original = len(df_work)
             with st.spinner("Running automated preprocessing pipeline..."):
-                _run_pipeline(df_work, engine, active_file, rows_original, lang)
+                _run_pipeline(df_work, engine, active_file, rows_original)
             st.rerun()
 
 

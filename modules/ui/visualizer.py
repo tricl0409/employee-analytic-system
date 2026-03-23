@@ -975,3 +975,107 @@ def plot_boxplot(
         showlegend=False,
     )
     return fig
+
+
+# =============================================================================
+# PREPROCESSING — Target Correlation Bar Chart
+# =============================================================================
+
+def chart_target_correlation(
+    corr_matrix: pd.DataFrame,
+    target_col: str = "income",
+) -> go.Figure | None:
+    """Build a horizontal bar chart of Pearson correlation with a target column.
+
+    Bars are gradient-colored by ``|r|`` intensity (blue→teal for positive,
+    amber→rose for negative).  X-axis auto-fits to the data range.
+
+    Args:
+        corr_matrix: Square symmetric correlation DataFrame.
+        target_col:  Target column name (case-insensitive lookup).
+
+    Returns:
+        A ``go.Figure`` ready for ``st.plotly_chart()``, or ``None`` when the
+        target column is not found in the matrix.
+    """
+    # Case-insensitive column lookup
+    actual_col = None
+    for col_name in corr_matrix.columns:
+        if col_name.lower() == target_col.lower():
+            actual_col = col_name
+            break
+    if actual_col is None:
+        return None
+
+    # Extract correlations with target, excluding self
+    target_corr = corr_matrix[actual_col].drop(actual_col, errors="ignore").dropna()
+    if target_corr.empty:
+        return None
+
+    # Sort by |r| ascending (top = strongest)
+    target_corr = target_corr.reindex(
+        target_corr.abs().sort_values(ascending=True).index
+    )
+
+    # ── Gradient color: intensity scales with |r| ────────────────────────
+    max_abs = max(target_corr.abs().max(), 0.01)
+    bar_colors = []
+    for val in target_corr.values:
+        intensity = min(abs(val) / max_abs, 1.0)
+        alpha = 0.45 + 0.55 * intensity
+        if val >= 0:
+            r_c = int(59 + (45 - 59) * intensity)
+            g_c = int(130 + (212 - 130) * intensity)
+            b_c = int(246 + (191 - 246) * intensity)
+        else:
+            r_c = int(251 + (244 - 251) * intensity)
+            g_c = int(191 + (114 - 191) * intensity)
+            b_c = int(36 + (182 - 36) * intensity)
+        bar_colors.append(f"rgba({r_c},{g_c},{b_c},{alpha:.2f})")
+
+    n_features = len(target_corr)
+    chart_height = max(340, n_features * 32 + 60)
+
+    # ── Auto-fit x-axis range ────────────────────────────────────────────
+    x_min = float(target_corr.min())
+    x_max = float(target_corr.max())
+    x_pad = max((x_max - x_min) * 0.25, 0.08)
+    x_lo = min(x_min - x_pad, -0.05)
+    x_hi = x_max + x_pad
+
+    fig = go.Figure(
+        data=go.Bar(
+            x=target_corr.values,
+            y=target_corr.index.tolist(),
+            orientation="h",
+            marker=dict(color=bar_colors, line=dict(width=0), cornerradius=4),
+            text=[f"{v:+.3f}" for v in target_corr.values],
+            textposition="outside",
+            textfont=dict(size=10, color="rgba(255,255,255,0.55)", family="Inter"),
+            hovertemplate="<b>%{y}</b><br>r = %{x:+.4f}<extra></extra>",
+        )
+    )
+
+    fig.update_layout(
+        paper_bgcolor=BG_PAPER,
+        plot_bgcolor=BG_PLOT,
+        font=dict(color="rgba(255,255,255,0.6)", family="Inter"),
+        margin=dict(l=10, r=50, t=10, b=10),
+        height=chart_height,
+        xaxis=dict(
+            range=[x_lo, x_hi],
+            zeroline=True,
+            zerolinecolor="rgba(255,255,255,0.15)",
+            zerolinewidth=1,
+            showgrid=True,
+            gridcolor=GRID_COLOR,
+            tickfont=dict(size=9, color="rgba(255,255,255,0.35)"),
+        ),
+        yaxis=dict(
+            tickfont=dict(size=10.5, color="rgba(255,255,255,0.65)"),
+            showgrid=False,
+        ),
+        bargap=0.22,
+    )
+    return fig
+

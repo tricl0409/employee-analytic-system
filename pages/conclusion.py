@@ -1,240 +1,38 @@
 """
-conclusion.py — Conclusion & Recommendation Page
+conclusion.py — Conclusion: High-Income Archetype Persona
 
-Design principles:
-  - Monochrome amber accent on deep slate — no rainbow multi-color cards
-  - SVG icons from modules/ui/icons.py (no emojis)
-  - Three data-driven sections computed from the active dataset
+Interactive persona wheel visualization showing the composite profile
+of a typical high earner, computed from the active dataset.
 
-Sections:
-  1. Executive Summary of Insights
-  2. Data Integrity Lessons & Cleaning Impact
-  3. Actionable Recommendations & Future Work
+Interaction: click the persona silhouette to reveal data-driven values
+with staggered CSS animations.
 """
 
-import numpy as np
+import math
+
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 from modules.core import data_engine
-from modules.ui import page_header, workspace_status, active_file_scan_progress_bar, section_divider
+from modules.core.preprocessing_engine import PreprocessingEngine
+from modules.ui import page_header, workspace_status, active_file_scan_progress_bar
 from modules.ui.components import styled_alert
 from modules.ui.icons import get_icon
 from modules.utils.helpers import _ensure_workspace_active
 
+
 # ==============================================================================
-# DESIGN TOKENS  — disciplined 2-accent system
+# DESIGN TOKENS
 # ==============================================================================
 
-_AMBER        = "#FF9F43"
-_AMBER_DIM    = "rgba(255,159,67,0.08)"
+_AMBER = "#FF9F43"
+_AMBER_DIM = "rgba(255,159,67,0.08)"
 _AMBER_BORDER = "rgba(255,159,67,0.22)"
-_AMBER_BRIGHT = "rgba(255,159,67,0.70)"
-
-_SLATE        = "rgba(255,255,255,0.04)"
-_BORDER       = "rgba(255,255,255,0.08)"
-_TEXT_HI      = "rgba(255,255,255,0.90)"   # headlines
-_TEXT_MED     = "rgba(255,255,255,0.65)"   # body
-_TEXT_LO      = "rgba(255,255,255,0.38)"   # labels / captions
-
-_OK_COLOR     = "#52c41a"                  # muted green — used sparingly for status only
-_OK_DIM       = "rgba(82,196,26,0.08)"
 
 
 # ==============================================================================
-# UI PRIMITIVES
-# ==============================================================================
-
-def _section_header(icon_key: str, title: str, subtitle: str = "") -> None:
-    icon_svg = get_icon(icon_key, size=18, color=_AMBER)
-    sub_html = (
-        f"<div style='font-size:0.76rem;color:{_TEXT_LO};margin-top:4px;'>{subtitle}</div>"
-        if subtitle else ""
-    )
-    st.markdown(
-        f"<div style='padding:14px 18px;margin-bottom:16px;margin-top:4px;"
-        f"background:linear-gradient(135deg, rgba(255,159,67,0.08) 0%, rgba(255,159,67,0.02) 100%);"
-        f"border:1px solid {_AMBER_BORDER};border-left:3px solid {_AMBER_BRIGHT};"
-        f"border-radius:0 12px 12px 0;'>"
-        f"<div style='display:flex;align-items:center;gap:10px;'>"
-        f"{icon_svg}"
-        f"<span style='font-size:1.08rem;font-weight:800;color:{_TEXT_HI};"
-        f"letter-spacing:-0.3px;'>{title}</span>"
-        f"</div>{sub_html}</div>",
-        unsafe_allow_html=True,
-    )
-
-
-# ==============================================================================
-# CSS INTERACTIONS
-# ==============================================================================
-
-def _inject_styles() -> None:
-    """Inject scoped hover/transition effects for all card components."""
-    st.markdown(
-        """
-        <style>
-        /* ── Finding cards (Section 1 & 2) ─────────────────────────────── */
-        .concl-finding-card {
-            transition: transform 0.18s ease, box-shadow 0.18s ease,
-                        border-color 0.18s ease, background 0.18s ease;
-            cursor: default;
-        }
-        .concl-finding-card:hover {
-            transform: translateY(-2px);
-            background: rgba(255,255,255,0.07) !important;
-            box-shadow: 0 6px 24px rgba(0,0,0,0.28);
-        }
-        /* ── Recommendation cards (Section 3) ──────────────────────────── */
-        .concl-rec-card {
-            transition: transform 0.18s ease, box-shadow 0.18s ease,
-                        border-color 0.18s ease, background 0.18s ease;
-            cursor: default;
-        }
-        .concl-rec-card:hover {
-            transform: translateY(-2px);
-            background: rgba(255,159,67,0.14) !important;
-            border-color: rgba(255,159,67,0.50) !important;
-            box-shadow: 0 6px 24px rgba(255,159,67,0.12);
-        }
-        /* ── Number/letter badge: pulse on hover ───────────────────────── */
-        .concl-rec-card:hover .concl-badge {
-            transform: scale(1.10);
-            transition: transform 0.18s ease;
-        }
-        /* ── Section header icon pulse ─────────────────────────────────── */
-        .concl-section-icon {
-            display: inline-flex;
-            transition: transform 0.20s ease;
-        }
-        .concl-section-icon:hover {
-            transform: rotate(8deg) scale(1.15);
-        }
-        /* ── Equal-height columns ───────────────────────────────────────── */
-        [data-testid="stHorizontalBlock"] {
-            align-items: stretch !important;
-        }
-        [data-testid="stHorizontalBlock"] > [data-testid="stVerticalBlockBorderWrapper"] {
-            height: 100% !important;
-        }
-        [data-testid="stHorizontalBlock"] > [data-testid="stVerticalBlockBorderWrapper"]
-            > div[data-testid="stVerticalBlock"] {
-            height: 100% !important;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def _finding_card(icon_key: str, label: str, headline: str, detail: str,
-                  severity: str = "default") -> None:
-    """
-    A single finding card. severity = 'default' | 'warning' | 'ok'
-    Single-line styles to avoid Streamlit parser issues.
-    """
-    if severity == "warning":
-        left_color = "rgba(230,110,50,0.90)"
-    elif severity == "ok":
-        left_color = _OK_COLOR
-    else:
-        left_color = _AMBER_BRIGHT
-
-    icon_svg = get_icon(icon_key, size=14, color=left_color)
-    st.markdown(
-        f"<div class='concl-finding-card' style='background:rgba(255,255,255,0.04);"
-        f"border:1px solid rgba(255,255,255,0.08);"
-        f"border-left:3px solid {left_color};border-radius:8px;padding:12px 14px;margin-bottom:10px;'>"
-        f"<div style='display:flex;align-items:center;gap:6px;margin-bottom:5px;'>"
-        f"{icon_svg}"
-        f"<span style='font-size:0.65rem;font-weight:700;color:{left_color};"
-        f"text-transform:uppercase;letter-spacing:1px;'>{label}</span></div>"
-        f"<div style='font-size:0.85rem;font-weight:700;color:rgba(255,255,255,0.90);"
-        f"margin-bottom:4px;line-height:1.35;'>{headline}</div>"
-        f"<div style='font-size:0.78rem;color:rgba(255,255,255,0.62);line-height:1.72;'>{detail}</div>"
-        f"</div>",
-        unsafe_allow_html=True,
-    )
-
-
-def _rec_card(letter: str, title: str, body: str, tag: str = "") -> None:
-    """Render an individual rec card via st.markdown (used when not in grid layout)."""
-    st.markdown(_rec_card_html(letter, title, body, tag), unsafe_allow_html=True)
-
-
-def _rec_card_html(letter: str, title: str, body: str, tag: str = "") -> str:
-    """Return rec card as raw HTML string — for use in equal-height flex grid."""
-    tag_html = (
-        f"&ensp;<span style='background:rgba(255,159,67,0.15);border:1px solid rgba(255,159,67,0.22);"
-        f"border-radius:4px;padding:1px 6px;font-size:0.65rem;font-weight:700;"
-        f"color:#FF9F43;vertical-align:middle;'>{tag}</span>"
-        if tag else ""
-    )
-    return (
-        f"<div class='concl-rec-card' style='background:rgba(255,159,67,0.08);"
-        f"border:1px solid rgba(255,159,67,0.22);"
-        f"border-radius:8px;padding:14px 16px;margin-bottom:10px;'>"
-        f"<div style='display:flex;gap:12px;align-items:flex-start;'>"
-        f"<div class='concl-badge' style='background:#FF9F43;color:#000;font-weight:900;border-radius:6px;"
-        f"width:26px;height:26px;min-width:26px;display:flex;align-items:center;"
-        f"justify-content:center;font-size:0.73rem;margin-top:2px;flex-shrink:0;"
-        f"transition:transform 0.18s ease;'>{letter}</div>"
-        f"<div style='flex:1;min-width:0;'>"
-        f"<div style='font-size:0.83rem;font-weight:700;color:rgba(255,255,255,0.90);"
-        f"margin-bottom:6px;line-height:1.3;'>{title}{tag_html}</div>"
-        f"<div style='font-size:0.78rem;color:rgba(255,255,255,0.65);line-height:1.70;'>{body}</div>"
-        f"</div></div></div>"
-    )
-
-
-def _finding_card_html(icon_key: str, label: str, headline: str, detail: str,
-                       severity: str = "default") -> str:
-    """Return finding card as raw HTML string — for equal-height flex grid."""
-    if severity == "warning":
-        left_color = "rgba(230,110,50,0.90)"
-    elif severity == "ok":
-        left_color = _OK_COLOR
-    else:
-        left_color = _AMBER_BRIGHT
-    icon_svg = get_icon(icon_key, size=14, color=left_color)
-    return (
-        f"<div class='concl-finding-card' style='background:rgba(255,255,255,0.04);"
-        f"border:1px solid rgba(255,255,255,0.08);"
-        f"border-left:3px solid {left_color};border-radius:8px;padding:12px 14px;margin-bottom:10px;'>"
-        f"<div style='display:flex;align-items:center;gap:6px;margin-bottom:5px;'>"
-        f"{icon_svg}"
-        f"<span style='font-size:0.65rem;font-weight:700;color:{left_color};"
-        f"text-transform:uppercase;letter-spacing:1px;'>{label}</span></div>"
-        f"<div style='font-size:0.85rem;font-weight:700;color:rgba(255,255,255,0.90);"
-        f"margin-bottom:4px;line-height:1.35;'>{headline}</div>"
-        f"<div style='font-size:0.78rem;color:rgba(255,255,255,0.62);line-height:1.72;'>{detail}</div>"
-        f"</div>"
-    )
-
-
-def _two_col_grid(col_a_html: str, col_b_html: str, gap: str = "20px") -> None:
-    """Render two columns as a single HTML flex block — guaranteed equal height."""
-    st.markdown(
-        f"<div style='display:flex;gap:{gap};align-items:stretch;'>"
-        f"<div style='flex:1;min-width:0;'>{col_a_html}</div>"
-        f"<div style='flex:1;min-width:0;'>{col_b_html}</div>"
-        f"</div>",
-        unsafe_allow_html=True,
-    )
-
-
-
-def _kv(label: str, value: str) -> str:
-    """Inline key-value chip for the summary bar."""
-    return (
-        f"<span style='color:{_TEXT_LO};font-size:0.73rem;'>{label}&thinsp;</span>"
-        f"<span style='color:{_AMBER};font-size:0.73rem;font-weight:700;'>{value}</span>"
-        f"<span style='color:{_TEXT_LO};font-size:0.73rem;'>&ensp;·&ensp;</span>"
-    )
-
-
-# ==============================================================================
-# DATA ANALYSIS — pure computation, no Streamlit side-effects
+# COLUMN RESOLVER & INCOME MASK
 # ==============================================================================
 
 def _norm(s: str) -> str:
@@ -250,8 +48,6 @@ def _resolve(df: pd.DataFrame) -> dict:
         "occupation":   ["occupation", "job"],
         "hours":        ["hoursperweek", "workinghours", "hours"],
         "sex":          ["sex", "gender"],
-        "race":         ["race", "ethnicity"],
-        "workclass":    ["workclass"],
         "marital":      ["maritalstatus", "marital"],
         "capital_gain": ["capitalgain", "capgain", "capital_gain"],
     }
@@ -262,373 +58,327 @@ def _high_mask(series: pd.Series) -> pd.Series:
     return series.astype(str).str.strip().str.lower().str.contains(r">50k", regex=True, na=False)
 
 
-def _compute_insights(df: pd.DataFrame) -> dict:
-    N    = len(df)
+def _apply_binning(df: pd.DataFrame) -> pd.DataFrame:
+    """Apply binning from session analysis_rules on a copy."""
+    rules = st.session_state.get("analysis_rules", {})
+    binning_config = rules.get("binning_config", {})
+    if not binning_config:
+        return df
+    df_binned = df.copy()
+    return PreprocessingEngine.apply_binning_mapping(df_binned, binning_config)
+
+
+# ==============================================================================
+# ARCHETYPE COMPUTATION
+# ==============================================================================
+
+def _compute_archetype(df: pd.DataFrame) -> dict:
+    """Compute 7-trait High-Income Archetype profile."""
     cols = _resolve(df)
-    inc  = cols["income"]
-    out  = {"n": N, "cols": len(df.columns), "inc_col": inc}
+    inc = cols.get("income")
+    if not inc:
+        return {}
 
-    if inc is None:
-        return out
+    hi_mask = _high_mask(df[inc])
+    hi_df = df[hi_mask]
+    hi_count = len(hi_df)
 
-    hi   = _high_mask(df[inc])
-    out["pct_high"] = round(hi.mean() * 100, 1)
-    out["n_high"]   = int(hi.sum())
+    if hi_count == 0:
+        return {}
 
-    # Education
-    edu = cols["education"]
-    if edu:
-        hi_by_edu = _high_mask(df[inc])
-        edu_rate = (hi_by_edu.groupby(df[edu].astype(str)).mean() * 100).round(1)
-        out["best_edu"]       = edu_rate.idxmax()
-        out["best_edu_rate"]  = round(edu_rate.max(), 1)
-        out["worst_edu_rate"] = round(edu_rate.min(), 1)
-        out["edu_ratio"]      = round(edu_rate.max() / max(edu_rate.min(), 1), 1)
+    df_binned = _apply_binning(df)
+    hi_binned = df_binned[hi_mask]
 
-    # Occupation
-    occ = cols["occupation"]
-    if occ:
-        hi_by_occ = _high_mask(df[inc])
-        occ_rate = (hi_by_occ.groupby(df[occ].astype(str)).mean() * 100).round(1)
-        out["best_occ"]      = occ_rate.idxmax()
-        out["best_occ_pct"]  = round(occ_rate.max(), 1)
-        out["worst_occ"]     = occ_rate.idxmin()
-        out["worst_occ_pct"] = round(occ_rate.min(), 1)
-        out["occ_spread"]    = round(occ_rate.max() - occ_rate.min(), 1)
+    arch: dict = {
+        "total": len(df),
+        "high_count": hi_count,
+        "high_pct": round(hi_mask.mean() * 100, 1),
+    }
 
-    # Gender
-    sex = cols["sex"]
-    if sex:
-        hi_by_sex = _high_mask(df[inc])
-        sex_rate = (hi_by_sex.groupby(df[sex].astype(str)).mean() * 100).round(1)
-        vals       = sex_rate.to_dict()
-        male_key   = next((k for k in vals if "male" in k.lower() and "fe" not in k.lower()), None)
-        female_key = next((k for k in vals if "female" in k.lower() or k.lower() == "f"), None)
-        if male_key and female_key:
-            out.update({
-                "gender_gap":    round(vals[male_key] - vals[female_key], 1),
-                "male_pct":      vals[male_key],
-                "female_pct":    vals[female_key],
-                "male_key":      male_key,
-                "female_key":    female_key,
-            })
+    # 1. Gender
+    sex_col = cols.get("sex")
+    if sex_col and sex_col in hi_df.columns:
+        sex_vc = hi_df[sex_col].astype(str).str.strip().value_counts()
+        if not sex_vc.empty:
+            top_sex = sex_vc.index[0]
+            top_sex_pct = round(sex_vc.iloc[0] / hi_count * 100, 1)
+            is_male = "male" in top_sex.lower() and "fe" not in top_sex.lower()
+            arch["gender"] = {"label": top_sex, "pct": top_sex_pct, "is_male": is_male}
 
-    # Hours
-    hrs = cols["hours"]
-    if hrs and pd.api.types.is_numeric_dtype(df[hrs]):
-        hrs_corr = round(df[hrs].corr(hi.astype(float)), 3)
-        out["hrs_corr"]     = hrs_corr
-        out["avg_hrs_high"] = round(df.loc[hi,  hrs].mean(), 1)
-        out["avg_hrs_low"]  = round(df.loc[~hi, hrs].mean(), 1)
+    # 2. Age
+    age_col = cols.get("age")
+    if age_col and age_col in hi_df.columns:
+        ages = pd.to_numeric(hi_df[age_col], errors="coerce").dropna()
+        if not ages.empty:
+            arch["age"] = {
+                "median": int(ages.median()),
+                "q1": int(ages.quantile(0.25)),
+                "q3": int(ages.quantile(0.75)),
+            }
 
-    # Capital Gain
-    cg = cols["capital_gain"]
-    if cg and pd.api.types.is_numeric_dtype(df[cg]):
-        out["cg_pct_pos"] = round((df[cg] > 0).mean() * 100, 1)
-        out["cg_max"]     = int(df[cg].max())
-        out["cg_clipped"] = int((df[cg] >= 99999).sum())
+    # 3. Marital (binned)
+    marital_col = cols.get("marital")
+    if marital_col and marital_col in hi_binned.columns:
+        m_vc = hi_binned[marital_col].astype(str).value_counts()
+        if not m_vc.empty:
+            arch["marital"] = {"label": m_vc.index[0], "pct": round(m_vc.iloc[0] / hi_count * 100, 1)}
 
-    # Integrity
-    missing_total = int(df.isnull().sum().sum())
-    out["missing_total"] = missing_total
-    out["missing_pct"]   = round(missing_total / max(N * len(df.columns), 1) * 100, 2)
-    out["dupes"]         = int(df.duplicated().sum())
+    # 4. Education (binned)
+    edu_col = cols.get("education")
+    if edu_col and edu_col in hi_binned.columns:
+        e_vc = hi_binned[edu_col].astype(str).value_counts()
+        if not e_vc.empty:
+            arch["education"] = {"label": e_vc.index[0], "pct": round(e_vc.iloc[0] / hi_count * 100, 1)}
 
-    from modules.core.audit_engine import detect_noise_values
-    noise_df, noise_total = detect_noise_values(df)
-    noise_cols = []
-    if not noise_df.empty:
-        for _, noise_row in noise_df.iterrows():
-            noise_cols.append(f"<b>{noise_row['Column']}</b>&nbsp;({noise_row['Noise Count']:,})")
-    out["noise_count"] = noise_total
-    out["noise_pct"]   = round(noise_total / max(N, 1) * 100, 2)
-    out["noise_cols"]  = noise_cols[:5]
+    # 5. Occupation (binned)
+    occ_col = cols.get("occupation")
+    if occ_col and occ_col in hi_binned.columns:
+        o_vc = hi_binned[occ_col].astype(str).value_counts()
+        if not o_vc.empty:
+            arch["occupation"] = {"label": o_vc.index[0], "pct": round(o_vc.iloc[0] / hi_count * 100, 1)}
 
-    return out
+    # 6. Hours
+    hrs_col = cols.get("hours")
+    if hrs_col and hrs_col in hi_df.columns:
+        hrs = pd.to_numeric(hi_df[hrs_col], errors="coerce").dropna()
+        if not hrs.empty:
+            arch["hours"] = {"avg": round(hrs.mean(), 1), "pct_overtime": round((hrs > 40).sum() / len(hrs) * 100, 1)}
+
+    # 7. Capital Gain
+    cg_col = cols.get("capital_gain")
+    if cg_col and cg_col in hi_df.columns:
+        cg = pd.to_numeric(hi_df[cg_col], errors="coerce")
+        has_cg = (cg > 0).sum()
+        arch["capital_gain"] = {"pct": round(has_cg / hi_count * 100, 1)}
+
+    return arch
 
 
 # ==============================================================================
-# SECTION 1 — EXECUTIVE SUMMARY
+# PERSONA WHEEL — HTML/CSS/JS COMPONENT
 # ==============================================================================
 
-def _render_executive_summary(ins: dict) -> None:
-    _section_header(
-        "bar_chart", "Executive Summary of Insights",
-        "Key headline findings — extracted for busy stakeholders who need answers, not charts."
-    )
+def _persona_wheel_html(arch: dict) -> str:
+    """Generate the full interactive persona wheel as a self-contained HTML page."""
 
-    if not ins.get("inc_col"):
-        styled_alert("No income/salary column detected in this dataset.", "info")
-        return
+    gender_info = arch.get("gender", {})
+    is_male = gender_info.get("is_male", True)
+    gender_label = gender_info.get("label", "N/A")
+    gender_pct = gender_info.get("pct", 0)
 
-    pct_hi = ins.get("pct_high", "—")
-    N      = ins.get("n", 0)
+    age_info = arch.get("age", {})
+    marital = arch.get("marital", {})
+    edu = arch.get("education", {})
+    occ = arch.get("occupation", {})
+    hours = arch.get("hours", {})
+    cg = arch.get("capital_gain", {})
 
-    # ── Build column A ──────────────────────────────────────────────────
-    col_a = ""
-    if "best_edu" in ins:
-        col_a += _finding_card_html(
-            "briefcase", "Key Finding · Education",
-            f"Education is the strongest predictor — {ins['edu_ratio']}× income multiplier",
-            f"Individuals with <b>{ins['best_edu']}</b> credentials earn &gt;50K "
-            f"at <b>{ins['best_edu_rate']}%</b> vs <b>{ins['worst_edu_rate']}%</b> "
-            f"for the least-educated group — the single largest income explainer.",
+    high_count = arch.get("high_count", 0)
+    high_pct = arch.get("high_pct", 0)
+
+    accent = "rgba(59,130,246,0.85)" if is_male else "rgba(236,72,153,0.85)"
+    accent_glow = "rgba(59,130,246,0.25)" if is_male else "rgba(236,72,153,0.25)"
+    accent_dim = "rgba(59,130,246,0.12)" if is_male else "rgba(236,72,153,0.12)"
+
+    # 7 segments positioned around the wheel
+    segments = [
+        {
+            "label": "GENDER", "value": f"{gender_label}", "sub": f"{gender_pct}% of high earners",
+            "color": "#FF9F43", "angle": -90,
+        },
+        {
+            "label": "AGE", "value": f"Median {age_info.get('median', '—')}",
+            "sub": f"IQR {age_info.get('q1', '—')}–{age_info.get('q3', '—')} yrs",
+            "color": "#3B82F6", "angle": -90 + 360 / 7,
+        },
+        {
+            "label": "EDUCATION", "value": f"{edu.get('label', '—')}",
+            "sub": f"{edu.get('pct', 0)}%",
+            "color": "#10B981", "angle": -90 + 2 * 360 / 7,
+        },
+        {
+            "label": "OCCUPATION", "value": f"{occ.get('label', '—')}",
+            "sub": f"{occ.get('pct', 0)}%",
+            "color": "#F59E0B", "angle": -90 + 3 * 360 / 7,
+        },
+        {
+            "label": "MARITAL", "value": f"{marital.get('label', '—')}",
+            "sub": f"{marital.get('pct', 0)}%",
+            "color": "#8B5CF6", "angle": -90 + 4 * 360 / 7,
+        },
+        {
+            "label": "HOURS/WK", "value": f"Avg {hours.get('avg', '—')}h",
+            "sub": f"{hours.get('pct_overtime', 0)}% overtime",
+            "color": "#EC4899", "angle": -90 + 5 * 360 / 7,
+        },
+        {
+            "label": "CAPITAL GAIN", "value": f"{cg.get('pct', 0)}%",
+            "sub": "have investment income",
+            "color": "#6366F1", "angle": -90 + 6 * 360 / 7,
+        },
+    ]
+
+    # Compute positions
+    label_items = []
+    arc_items = []
+    connector_items = []
+    angle_step = 360 / len(segments)
+
+    for idx, seg in enumerate(segments):
+        angle_rad = math.radians(seg["angle"])
+        # Label position (outer — percentage of container)
+        lx = 50 + 40 * math.cos(angle_rad)
+        ly = 50 + 40 * math.sin(angle_rad)
+        # Dot position (wheel edge)
+        dx = 50 + 26 * math.cos(angle_rad)
+        dy = 50 + 26 * math.sin(angle_rad)
+
+        text_align = "left" if lx > 55 else ("right" if lx < 45 else "center")
+
+        label_items.append(f"""
+        <div class="seg" id="seg{idx}" style="left:{lx:.1f}%;top:{ly:.1f}%;text-align:{text_align};">
+            <div class="seg-label" style="color:{seg['color']}">{seg['label']}</div>
+            <div class="seg-val">{seg['value']}</div>
+            <div class="seg-sub">{seg['sub']}</div>
+        </div>
+        """)
+
+        connector_items.append(f"""
+        <line x1="{dx:.1f}%" y1="{dy:.1f}%" x2="{lx:.1f}%" y2="{ly:.1f}%"
+              stroke="{seg['color']}" stroke-width="1" stroke-dasharray="3,4"
+              opacity="0.25" class="conn" />
+        <circle cx="{dx:.1f}%" cy="{dy:.1f}%" r="3" fill="{seg['color']}" opacity="0.5" class="cdot" />
+        """)
+
+        # Wheel arc segments
+        start_a = -90 + idx * angle_step
+        end_a = start_a + angle_step
+        r = 26
+        x1 = 50 + r * math.cos(math.radians(start_a))
+        y1 = 50 + r * math.sin(math.radians(start_a))
+        x2 = 50 + r * math.cos(math.radians(end_a))
+        y2 = 50 + r * math.sin(math.radians(end_a))
+        arc_items.append(
+            f'<path d="M 50,50 L {x1:.2f},{y1:.2f} A {r},{r} 0 0,1 {x2:.2f},{y2:.2f} Z"'
+            f' fill="{seg["color"]}" opacity="0.12" class="warc" />'
         )
-    if "gender_gap" in ins:
-        col_a += _finding_card_html(
-            "users", "Key Finding · Gender Inequality",
-            f"{ins.get('gender_gap','?')} pp gender income gap — structural signal",
-            f"<b>{ins.get('male_key','Male')}</b> {ins.get('male_pct',0)}% vs "
-            f"<b>{ins.get('female_key','Female')}</b> {ins.get('female_pct',0)}% &gt;50K. "
-            f"Gap holds within matched education + occupation — not explained by skills alone.",
-            severity="warning",
-        )
-    if "cg_pct_pos" in ins:
-        clipped_note = (
-            f" {ins['cg_clipped']:,} records capped at 99,999 (survey ceiling artifact)."
-            if ins.get("cg_clipped", 0) > 0 else ""
-        )
-        col_a += _finding_card_html(
-            "zap", "Key Finding · Capital Gains",
-            f"Capital income: rare ({ins['cg_pct_pos']}%) but highly concentrated",
-            f"Only <b>{ins['cg_pct_pos']}%</b> report Capital Gain &gt; 0 — "
-            f"but gains are heavily skewed toward high earners, making it a "
-            f"high-signal wealth marker despite low prevalence.{clipped_note}",
-        )
-
-    # ── Build column B ──────────────────────────────────────────────────
-    col_b = ""
-    if "best_occ" in ins:
-        occ_spread = ins.get("occ_spread", round(ins.get("best_occ_pct", 0) - ins.get("worst_occ_pct", 0), 1))
-        col_b += _finding_card_html(
-            "target", "Key Finding · Occupation",
-            f"{ins.get('best_occ','N/A')} leads at {ins.get('best_occ_pct',0)}% — {occ_spread} pp spread",
-            f"Occupation is the #2 predictor. <b>{ins.get('best_occ','N/A')}</b> "
-            f"({ins.get('best_occ_pct',0)}%) vs <b>{ins.get('worst_occ','N/A')}</b> "
-            f"({ins.get('worst_occ_pct',0)}%) — reflects skill premiums and structural access barriers.",
-        )
-    if "hrs_corr" in ins:
-        corr_abs   = abs(ins["hrs_corr"])
-        corr_label = "weak" if corr_abs < 0.15 else ("moderate" if corr_abs < 0.35 else "strong")
-        col_b += _finding_card_html(
-            "clock", "Key Finding · Work Intensity",
-            f"Hours/week: only {corr_label} income correlation (r = {ins['hrs_corr']})",
-            f"High earners average <b>{ins['avg_hrs_high']}h/wk</b> vs "
-            f"<b>{ins['avg_hrs_low']}h</b> — a modest gap. "
-            f"Role type (Education + Occupation) is far more predictive than raw hours worked.",
-        )
-
-    _two_col_grid(col_a, col_b)
-
-    # Summary footer
-    st.markdown(
-        f"<div style='color:{_TEXT_LO};font-size:0.71rem;margin-top:4px;padding-left:2px;'>"
-        f"{_kv('Dataset', f'{N:,} records')}"
-        f"{_kv('>50K rate', f'{pct_hi}%')}"
-        f"{_kv('Columns', str(ins.get('cols', '—')))}"
-        f"</div>",
-        unsafe_allow_html=True,
-    )
 
 
-# ==============================================================================
-# SECTION 2 — DATA INTEGRITY LESSONS
-# ==============================================================================
 
-def _render_integrity_lessons(ins: dict) -> None:
-    _section_header(
-        "audit", "Data Integrity Lessons & Cleaning Impact",
-        "How preprocessing uncovered and corrected issues that would have distorted the analysis."
-    )
+    labels_html = "\n".join(label_items)
+    conns_html = "\n".join(connector_items)
+    arcs_html = "\n".join(arc_items)
 
-    # ── Build column A: Noise + Capital Gain (long) ───────────────────────
-    col_a = ""
-    if ins.get("noise_count", 0) > 0:
-        col_list = ", ".join(ins.get("noise_cols", []))
-        col_a += _finding_card_html(
-            "scissors", "Data Issue · Noise Values",
-            f"{ins['noise_count']:,} placeholder values removed ({ins['noise_pct']}% of rows)",
-            f"Tokens like '?', '-', 'null' replaced with NaN before analysis. "
-            f"Affected: {col_list}. "
-            f"Prevents a spurious token category from inflating group percentages "
-            f"and biasing income-rate calculations.",
-            severity="warning",
-        )
+
+    # Persona SVG
+    if is_male:
+        persona_svg = f"""
+        <circle cx="50" cy="30" r="12" fill="{accent}"/>
+        <rect x="38" y="44" width="24" height="22" rx="5" fill="{accent}" opacity="0.85"/>
+        <rect x="34" y="66" width="14" height="20" rx="3" fill="{accent}" opacity="0.7"/>
+        <rect x="52" y="66" width="14" height="20" rx="3" fill="{accent}" opacity="0.7"/>
+        """
     else:
-        col_a += _finding_card_html(
-            "check_circle", "Data Quality · Noise",
-            "No noise or placeholder values detected",
-            "All categorical columns are free of noise tokens such as '?', '-', or 'null'. "
-            "Categorical distribution charts reflect true value frequencies "
-            "and require no token-removal correction.",
-            severity="ok",
-        )
-    if ins.get("cg_clipped", 0) > 0:
-        col_a += _finding_card_html(
-            "alert_triangle", "Data Artifact · Capital Gain Ceiling",
-            f"{ins['cg_clipped']:,} records capped at 99,999 — survey data-ceiling",
-            f"The Capital Gain column has a hard upper bound of <b>99,999</b>. "
-            f"These represent individuals whose true gain exceeded the recording threshold — "
-            f"not data errors. Standard box-plots would misinterpret this as a single "
-            f"extreme outlier rather than a structural census-collection artifact.",
-            severity="warning",
-        )
-    else:
-        col_a += _finding_card_html(
-            "check_circle", "Data Quality · Capital Gain Range",
-            "No data-ceiling artifacts detected in Capital Gain",
-            "No records found at the 99,999 ceiling boundary. "
-            "Capital gain values appear to reflect unconstrained survey responses — "
-            "the distribution can be read without ceiling-artifact corrections.",
-            severity="ok",
-        )
+        persona_svg = f"""
+        <circle cx="50" cy="28" r="12" fill="{accent}"/>
+        <path d="M35,86 Q36,48 50,44 Q64,48 65,86 Z" fill="{accent}" opacity="0.85"/>
+        <ellipse cx="50" cy="54" rx="15" ry="10" fill="{accent}" opacity="0.75"/>
+        """
 
-    # ── Build column B: Missing + Duplicates ───────────────────────────
-    col_b = ""
-    if ins.get("missing_pct", 0) > 0:
-        col_b += _finding_card_html(
-            "bandaid", "Data Issue · Missing Values",
-            f"{ins['missing_total']:,} null cells ({ins['missing_pct']}% of total)",
-            f"Smart imputation applied: <b>mean</b> for symmetric numeric columns, "
-            f"<b>median</b> for skewed distributions, and <b>mode</b> for categoricals. "
-            f"Avoids row-deletion bias that would disproportionately remove records "
-            f"from under-represented demographic groups.",
-            severity="warning",
-        )
-    else:
-        col_b += _finding_card_html(
-            "check_circle", "Data Quality · Completeness",
-            "Dataset is fully populated — zero missing values",
-            "Every cell across all columns contains a valid, non-null value. "
-            "No imputation step was required. The dataset can be used directly "
-            "without any completeness-driven preprocessing.",
-            severity="ok",
-        )
-    dupes = ins.get("dupes", 0)
-    if dupes > 0:
-        col_b += _finding_card_html(
-            "copy", "Data Issue · Duplicate Rows",
-            f"{dupes:,} duplicate rows identified",
-            f"Fully duplicate records inflate counts for the most common categories, "
-            f"artificially shifting income-rate percentages for dominant groups. "
-            f"Removal ensures frequency distributions reflect unique individual observations.",
-            severity="warning",
-        )
-    else:
-        col_b += _finding_card_html(
-            "check_circle", "Data Quality · Uniqueness",
-            "No duplicate rows — every record is unique",
-            "De-duplication was not required. Each row represents a distinct individual. "
-            "Frequency distributions and group-rate calculations are not inflated "
-            "by repeated entries.",
-            severity="ok",
-        )
+    return f"""<!DOCTYPE html><html><head><style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{background:transparent;font-family:'Inter',-apple-system,sans-serif;color:#fff;overflow:hidden}}
 
-    _two_col_grid(col_a, col_b)
+.wrap{{position:relative;width:100%;max-width:640px;margin:0 auto;aspect-ratio:1}}
+
+/* ── Wheel SVG ───────────────────── */
+.wsvg{{position:absolute;inset:0;width:100%;height:100%}}
+.warc{{transition:opacity .6s ease}}
+.conn{{transition:opacity .5s ease}}
+.cdot{{transition:opacity .5s ease,r .3s ease}}
+
+/* ── Center ──────────────────────── */
+.center{{
+    position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    width:26%;aspect-ratio:1;border-radius:50%;
+    background:radial-gradient(circle,rgba(15,18,32,0.96),rgba(10,13,28,0.99));
+    border:2px solid {accent};
+    box-shadow:0 0 30px {accent_glow},0 0 60px {accent_glow},inset 0 0 30px rgba(0,0,0,0.5);
+    cursor:pointer;z-index:10;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    transition:transform .35s cubic-bezier(.4,0,.2,1),box-shadow .4s ease;
+}}
+.center:hover{{transform:translate(-50%,-50%) scale(1.07);
+    box-shadow:0 0 50px {accent_glow},0 0 100px {accent_glow},inset 0 0 30px rgba(0,0,0,0.5)}}
+.center svg{{width:55%;height:55%}}
+.hint{{font-size:8px;color:rgba(255,255,255,0.35);text-transform:uppercase;
+    letter-spacing:2px;margin-top:2px;transition:opacity .3s ease}}
+
+/* ── Segments ────────────────────── */
+.seg{{position:absolute;transform:translate(-50%,-50%);width:120px;z-index:5;
+    transition:all .4s cubic-bezier(.4,0,.2,1)}}
+.seg-label{{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:2px;
+    transition:all .3s ease}}
+.seg-val,.seg-sub{{opacity:0;max-height:0;overflow:hidden;
+    transform:translateY(8px);transition:all .45s cubic-bezier(.4,0,.2,1)}}
+.seg-val{{font-size:14px;font-weight:700;color:rgba(255,255,255,0.92);margin-top:3px}}
+.seg-sub{{font-size:10px;color:rgba(255,255,255,0.4);margin-top:1px}}
 
 
-# ==============================================================================
-# SECTION 3 — RECOMMENDATIONS & FUTURE WORK
-# ==============================================================================
 
-def _render_recommendations(ins: dict) -> None:
-    _section_header(
-        "orbit", "Actionable Recommendations & Future Work",
-        "Evidence-based actions and research directions grounded in the findings above."
-    )
+/* ── Stats bar ───────────────────── */
+.sbar{{text-align:center;font-size:11px;color:rgba(255,255,255,0.35);
+    margin-top:12px;letter-spacing:.3px;transition:opacity .4s ease .5s;opacity:0}}
+.sbar b{{color:#FF9F43;font-weight:700}}
 
-    col_label_style = (
-        f"font-size:0.70rem;font-weight:700;color:{_AMBER};"
-        f"text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;"
-        f"display:flex;align-items:center;gap:5px;"
-    )
-    edu_ratio = ins.get("edu_ratio", "significant")
-    best_occ  = ins.get("best_occ", "Professional Roles")
+/* ═══ Revealed state ═════════════ */
+.R .seg-val,.R .seg-sub{{opacity:1;max-height:60px;transform:translateY(0)}}
+.R .warc{{opacity:.3!important}}
+.R .conn{{opacity:.6!important}}
+.R .cdot{{opacity:.9!important}}
+.R .hint{{opacity:0}}
 
-    # ── Left: Policy recommendations ─────────────────────────────────
-    col1 = (
-        f"<div style='{col_label_style}'>"
-        f"{get_icon('target', size=13, color=_AMBER)}"
-        f"&ensp;Policy &amp; Action Recommendations</div>"
-    )
-    col1 += _rec_card_html(
-        "1", "Invest in Higher Education Access",
-        f"Education yields a <b>{edu_ratio}× income multiplier</b>. "
-        f"Expanding access to bachelor's-level programs and vocational training — "
-        f"especially for demographics currently concentrated in low-education, "
-        f"low-income occupational clusters — is the highest-ROI policy lever.",
-        tag="High Priority",
-    )
-    if ins.get("gender_gap"):
-        col1 += _rec_card_html(
-            "2", "Implement Structural Pay-Equity Measures",
-            f"A <b>{ins['gender_gap']} pp gender income gap</b> persists even within "
-            f"matched education and occupation groups. "
-            f"Transparent salary bands, mandatory pay-gap reporting, "
-            f"and targeted promotion-pipeline monitoring in high-income occupations "
-            f"are evidence-supported interventions.",
-            tag="High Priority",
-        )
-    col1 += _rec_card_html(
-        "3", "Expand Access to High-ROI Occupation Pathways",
-        f"<b>{best_occ}</b> achieves the highest income-attainment rate in this dataset. "
-        f"Workforce-development programs should build structured entry pathways "
-        f"(apprenticeships, certifications, employer co-op partnerships) into these fields. "
-        f"Prioritizing underrepresented groups in recruitment pipelines addresses both "
-        f"economic efficiency and equity simultaneously.",
-    )
-    if ins.get("hrs_corr") is not None:
-        col1 += _rec_card_html(
-            "4", "Reframe Labor Policy Beyond Hours-Based Metrics",
-            f"Hours worked correlates weakly with income (r={ins['hrs_corr']}), "
-            f"confirming that labor quantity is a poor proxy for economic output. "
-            f"Policies incentivizing overtime yield diminishing returns compared to "
-            f"skill-upgrading investments. Sector-mobility subsidies and role-reclassification "
-            f"programs are more structurally effective at raising income attainment.",
-        )
+.R .sbar{{opacity:1}}
 
-    # ── Right: Future Research ──────────────────────────────────────
-    col2 = (
-        f"<div style='{col_label_style}'>"
-        f"{get_icon('visual', size=13, color=_AMBER)}"
-        f"&ensp;Future Research Directions</div>"
-    )
-    col2 += _rec_card_html(
-        "A", "Integrate Predictive Machine Learning Modeling",
-        "Train a supervised classification model (Gradient Boosting, XGBoost, or "
-        "Logistic Regression with interaction terms) to predict individual income-class "
-        "probability. Shapley values will quantify the marginal contribution of "
-        "Education, Occupation, and demographic features — validating or refining "
-        "the rank-ordering established here.",
-        tag="Next Step",
-    )
-    col2 += _rec_card_html(
-        "B", "Collect Longitudinal Data for Mobility Analysis",
-        "This dataset is a static cross-section. Panel data spanning multiple census "
-        "waves would enable income-mobility analysis — identifying whether high-education "
-        "individuals consistently transition to higher income brackets over their careers "
-        "or whether mobility is constrained by structural barriers.",
-        tag="Next Step",
-    )
-    if ins.get("gender_gap"):
-        col2 += _rec_card_html(
-            "C", "Intersectional Income Inequality Research",
-            "Analyze income disparity at the intersection of <b>Gender × Occupation × "
-            "Education</b> using multilevel modeling with interaction terms. "
-            "Current findings point to additive effects, but interaction terms may "
-            "reveal compounding disadvantages for specific subgroups that single-variable "
-            "analysis cannot detect.",
-        )
-    col2 += _rec_card_html(
-        "D", "Replicate Analysis on Modern Census Records",
-        "This dataset reflects a specific historical period. Replicating this analysis "
-        "on post-2010 ACS (American Community Survey) data would test whether structural "
-        "patterns — the education premium, gender gap, occupational spread — have "
-        "widened, narrowed, or shifted in response to economic cycles and policy changes "
-        "over the past three decades.",
-    )
+/* Stagger animation delays */
+.R #seg0 .seg-val,.R #seg0 .seg-sub{{transition-delay:.05s}}
+.R #seg1 .seg-val,.R #seg1 .seg-sub{{transition-delay:.12s}}
+.R #seg2 .seg-val,.R #seg2 .seg-sub{{transition-delay:.19s}}
+.R #seg3 .seg-val,.R #seg3 .seg-sub{{transition-delay:.26s}}
+.R #seg4 .seg-val,.R #seg4 .seg-sub{{transition-delay:.33s}}
+.R #seg5 .seg-val,.R #seg5 .seg-sub{{transition-delay:.40s}}
+.R #seg6 .seg-val,.R #seg6 .seg-sub{{transition-delay:.47s}}
 
-    _two_col_grid(col1, col2, gap="24px")
+/* Glow pulse on revealed */
+@keyframes gp{{
+    0%,100%{{box-shadow:0 0 30px {accent_glow},0 0 60px {accent_glow},inset 0 0 30px rgba(0,0,0,.5)}}
+    50%{{box-shadow:0 0 50px {accent_glow},0 0 100px {accent_glow},inset 0 0 30px rgba(0,0,0,.5)}}
+}}
+.R .center{{animation:gp 3s ease-in-out infinite}}
+
+/* Outer ring pulse */
+@keyframes rp{{0%,100%{{opacity:.08}}50%{{opacity:.18}}}}
+.R .oring{{animation:rp 3s ease-in-out infinite}}
+</style></head><body>
+
+<div class="wrap" id="W">
+    <svg class="wsvg" viewBox="0 0 100 100">
+        {arcs_html}
+        {conns_html}
+        <circle cx="50" cy="50" r="26" fill="none" stroke="rgba(255,255,255,0.08)"
+                stroke-width=".4" class="oring"/>
+    </svg>
+    <div class="center" onclick="document.getElementById('W').classList.toggle('R')">
+        <svg viewBox="0 0 100 100">{persona_svg}</svg>
+        <div class="hint">Click to reveal</div>
+    </div>
+    {labels_html}
+</div>
+
+<div class="sbar">
+    Based on <b>{high_count:,}</b> High Income earners &nbsp;·&nbsp; <b>{high_pct}%</b> of dataset
+</div>
+</body></html>"""
 
 
 # ==============================================================================
@@ -639,8 +389,8 @@ def main() -> None:
     lang = st.session_state.get("lang", "en")
 
     page_header(
-        title="Conclusion & Recommendation",
-        subtitle="Data-driven findings, integrity lessons, and evidence-based recommendations.",
+        title="Conclusion & Archetype Profile",
+        subtitle="Interactive portrait of the typical High-Income earner — synthesized from all analysis dimensions.",
     )
 
     _ensure_workspace_active()
@@ -656,31 +406,48 @@ def main() -> None:
         styled_alert("No data loaded. Please upload and activate a dataset first.", "warning")
         return
 
-    # ── Cache insights (recompute only when file or schema changes) ─────────
-    cache_key = f"_conclusion_insights_v2_{active_file}"   # v2 forces recompute after redesign
-    size_key  = f"_conclusion_size_v2_{active_file}"
+    # ── Compute archetype ──────────────────────────────────────────────
+    cache_key = f"_conclusion_arch_v4_{active_file}"
+    size_key = f"_conclusion_size_v4_{active_file}"
     if (
         cache_key not in st.session_state
         or st.session_state.get(size_key) != len(df_raw)
     ):
-        with st.spinner("Computing data-driven insights…"):
-            st.session_state[cache_key] = _compute_insights(df_raw)
-            st.session_state[size_key]  = len(df_raw)
+        with st.spinner("Computing High-Income Archetype…"):
+            st.session_state[cache_key] = _compute_archetype(df_raw)
+            st.session_state[size_key] = len(df_raw)
 
-    ins = st.session_state[cache_key]
+    arch = st.session_state[cache_key]
 
-    # ── Inject interaction styles ──────────────────────────────────────────
-    _inject_styles()
+    if not arch:
+        styled_alert("Could not compute archetype — no income column found.", "warning")
+        return
 
-    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+    # ── Section header ─────────────────────────────────────────────────
+    gender_info = arch.get("gender", {})
+    is_male = gender_info.get("is_male", True)
 
-    _render_executive_summary(ins)
-    section_divider()
+    icon_svg = get_icon("target", size=18, color=_AMBER)
+    st.markdown(
+        f"<div style='padding:14px 18px;margin-top:4px;margin-bottom:20px;"
+        f"background:linear-gradient(135deg,{_AMBER_DIM} 0%,rgba(255,159,67,0.02) 100%);"
+        f"border:1px solid {_AMBER_BORDER};border-left:3px solid rgba(255,159,67,0.70);"
+        f"border-radius:0 12px 12px 0;'>"
+        f"<div style='display:flex;align-items:center;gap:10px;'>"
+        f"{icon_svg}"
+        f"<span style='font-size:1.08rem;font-weight:800;color:rgba(255,255,255,0.92);"
+        f"letter-spacing:-0.3px;'>High-Income Archetype</span>"
+        f"</div>"
+        f"<div style='font-size:0.76rem;color:rgba(255,255,255,0.38);margin-top:4px;'>"
+        f"Click the persona at the center of the wheel to reveal key characteristics"
+        f"</div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
 
-    _render_integrity_lessons(ins)
-    section_divider()
-
-    _render_recommendations(ins)
+    # ── Render persona wheel ───────────────────────────────────────────
+    html_content = _persona_wheel_html(arch)
+    components.html(html_content, height=660, scrolling=False)
 
 
 if __name__ == "__main__":

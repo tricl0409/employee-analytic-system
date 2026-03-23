@@ -23,6 +23,8 @@ Design notes:
       computed directly with NumPy for consistency with ``audit_engine.py``.
 """
 
+import re as _re
+
 import numpy as np
 import pandas as pd
 from typing import Any, Dict, List, Optional, Tuple
@@ -81,6 +83,66 @@ STEP_COLORS: Dict[int, str] = {
 def _build_col_lower_map(df: pd.DataFrame) -> Dict[str, str]:
     """Build case-insensitive column name lookup: ``{lowercase → actual_name}``."""
     return {c.lower(): c for c in df.columns}
+
+
+def _parse_binning_config(
+    binning_config: Optional[Dict[str, Any]],
+) -> Tuple[Dict[str, List[str]], Dict[str, List[str]]]:
+    """Parse a binning config dict into bin-labels and map-groups lookups.
+
+    Single source of truth for decomposing ``binning_config`` — called by
+    ``get_encoding_preview``, ``get_encoding_detail_report``, and
+    ``apply_feature_encoding``.
+
+    Args:
+        binning_config: Dict from ``db_config_manager`` (rule key
+                        ``'binning_config'``).  May be ``None``.
+
+    Returns:
+        Tuple of ``(bin_labels_map, map_groups_map)`` where each is
+        ``{col_lower: [label_or_group_name, …]}``.
+    """
+    bin_labels_map: Dict[str, List[str]] = {}
+    map_groups_map: Dict[str, List[str]] = {}
+    if not binning_config:
+        return bin_labels_map, map_groups_map
+
+    for cfg_key, cfg_val in binning_config.items():
+        cfg_lower = cfg_key.lower()
+        rule_type = cfg_val.get("type", "")
+        if rule_type == "bin":
+            bin_labels_map[cfg_lower] = [
+                str(lbl) for lbl in cfg_val.get("labels", [])
+            ]
+        elif rule_type == "map":
+            map_groups_map[cfg_lower] = [
+                str(key) for key in cfg_val.get("groups", {}).keys()
+            ]
+
+    return bin_labels_map, map_groups_map
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PUBLIC HELPERS — shared across pages (single source of truth)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def bin_label_sort_key(label: str) -> int:
+    """Extract the first number from a bin-group label for semantic sorting.
+
+    Used to sort binned labels like ``"≤25"``, ``"26-35"``, ``">65"`` in
+    ascending numeric order rather than alphabetical order.
+
+    Non-numeric labels (``"None"``, ``"Low"``, ``"High"``) return 999
+    so they fall through to config-defined ordering.
+
+    Args:
+        label: A bin-group label string.
+
+    Returns:
+        An integer sort key.
+    """
+    match = _re.search(r"\d+", str(label))
+    return int(match.group()) if match else 999
 
 
 class PreprocessingEngine:
@@ -848,11 +910,12 @@ class PreprocessingEngine:
     # 8. FEATURE ENCODING
     # ─────────────────────────────────────────────────────────────────────────
 
-    #: Columns whose binned values have an intrinsic order.
-    #: After Step 7 (Binning & Mapping), these columns contain labels like
-    #: "≤25", "26-35", … ("Age") or "Basic", "HS-grad", … ("Education").
-    #: They must be Label-encoded (ordinal), **not** One-Hot-encoded.
-    _ORDINAL_COLUMNS: set = {"age", "hours_per_week", "education"}
+    #: Extra ordinal columns not captured by binning_config auto-detection.
+    #: After Step 7 (Binning & Mapping), columns in binning_config already
+    #: have inherent order and are auto-detected.  This set is only needed
+    #: for categorical columns whose ordinality is domain-knowledge-based
+    #: but NOT defined in any binning_config rule.
+    _EXTRA_ORDINAL_COLUMNS: set = set()
 
     #: Binary columns — only 2 unique values, Label Encoding is sufficient.
     _BINARY_COLUMNS: set = {"sex", "income"}
@@ -882,7 +945,8 @@ class PreprocessingEngine:
              exists in the DataFrame are marked **Dropped (Redundant)**.
           2. Binary columns (≤ 2 unique) or columns in ``_BINARY_COLUMNS``
              are assigned **Label Encoding**.
-          3. Ordinal columns in ``_ORDINAL_COLUMNS`` are assigned
+          3. Ordinal columns (auto-derived from binning config ``bin``
+             keys + ``_EXTRA_ORDINAL_COLUMNS``) are assigned
              **Label Encoding**.
           4. All remaining categorical columns are assigned
              **One-Hot Encoding** (``drop_first=True``).
@@ -902,16 +966,11 @@ class PreprocessingEngine:
 
         # ── Build lookup tables from binning_config ──────────────────────
         col_lower_map = _build_col_lower_map(df)
-        bin_labels: Dict[str, List[str]] = {}   # col_lower → bin labels
-        map_groups: Dict[str, List[str]] = {}   # col_lower → group names
-        if binning_config:
-            for cfg_key, cfg_val in binning_config.items():
-                cfg_lower = cfg_key.lower()
-                rule_type = cfg_val.get("type", "")
-                if rule_type == "bin":
-                    bin_labels[cfg_lower] = cfg_val.get("labels", [])
-                elif rule_type == "map":
-                    map_groups[cfg_lower] = list(cfg_val.get("groups", {}).keys())
+        bin_labels, map_groups = _parse_binning_config(binning_config)
+        # Derive ordinal column set: only "bin" type columns have inherent order.
+        # "map" type columns (workclass, marital_status, occupation, etc.) are
+        # nominal — they must remain One-Hot encoded.
+        ordinal_cols = set(bin_labels.keys()) | PreprocessingEngine._EXTRA_ORDINAL_COLUMNS
 
         # ── Collect columns to preview ───────────────────────────────────
         # Start with current categorical columns
@@ -971,25 +1030,15 @@ class PreprocessingEngine:
                 })
                 continue
 
-            # ── Ordinal (known ordered columns) ──────────────────────────
-            if col_lower in PreprocessingEngine._ORDINAL_COLUMNS:
+            # ── Ordinal (binning config or domain-knowledge columns) ────
+            if col_lower in ordinal_cols or col in binned_numeric_cols:
+                reason = "Binned numeric — ordinal" if col in binned_numeric_cols else "Ordinal — natural order"
                 results.append({
                     "Column": col,
                     "Unique": n_unique,
                     "Examples": examples,
                     "Encoding": ENC_LABEL,
-                    "Reason": "Ordinal — natural order",
-                })
-                continue
-
-            # ── Binned numeric → ordinal (bins have inherent order) ───────
-            if col in binned_numeric_cols:
-                results.append({
-                    "Column": col,
-                    "Unique": n_unique,
-                    "Examples": examples,
-                    "Encoding": ENC_LABEL,
-                    "Reason": "Binned numeric — ordinal",
+                    "Reason": reason,
                 })
                 continue
 
@@ -1005,9 +1054,144 @@ class PreprocessingEngine:
         return results
 
     @staticmethod
+    def get_encoding_detail_report(
+        df: pd.DataFrame,
+        candidates: Optional[List[Dict[str, Any]]] = None,
+        binning_config: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Build a detailed encoding report showing value → code mappings.
+
+        For each column in *candidates*, simulates the actual encoding logic
+        (``OrdinalEncoder`` for Label Encoding, ``pd.get_dummies`` for One-Hot)
+        on the current DataFrame to produce exact value-to-code mappings.
+
+        Args:
+            df:             Input DataFrame (not mutated).
+            candidates:     Output of ``get_encoding_preview()``.
+                            When ``None``, auto-detected.
+            binning_config: Dict from ``db_config_manager`` (rule key
+                            ``'binning_config'``).  Used to resolve
+                            post-Binning values for columns that will be
+                            binned in Step 7.
+
+        Returns:
+            List of dicts with keys:
+              - ``Column``:   Column name.
+              - ``Encoding``: ``ENC_LABEL`` / ``ENC_ONEHOT`` / ``ENC_DROP_REDUNDANT``.
+              - ``Reason``:   Human-readable reason for the chosen strategy.
+              - ``Mapping``:  List of ``{"Original": str, "Encoded": str|int}`` dicts.
+                For Label Encoding: ``{"Original": "Female", "Encoded": 0}``.
+                For One-Hot: ``{"Original": "Private", "Encoded": "column_Private (0/1)"}``.
+                For Drop Redundant: empty list.
+        """
+        from sklearn.preprocessing import OrdinalEncoder
+
+        if candidates is None:
+            candidates = PreprocessingEngine.get_encoding_preview(
+                df, binning_config=binning_config,
+            )
+
+        # ── Build post-Step-7 value lookups from binning_config ──────────
+        bin_labels_map, map_groups_map = _parse_binning_config(binning_config)
+
+        results: List[Dict[str, Any]] = []
+
+        for candidate in candidates:
+            col = candidate["Column"]
+            encoding = candidate["Encoding"]
+            reason = candidate.get("Reason", "")
+            col_lower = col.lower()
+
+            # ── Drop Redundant — no mapping ──────────────────────────────
+            if encoding == ENC_DROP_REDUNDANT:
+                results.append({
+                    "Column": col,
+                    "Encoding": encoding,
+                    "Reason": reason,
+                    "Mapping": [],
+                })
+                continue
+
+            # ── Resolve unique values (post-Binning simulation) ──────────
+            # For binned / mapped columns the config label order IS the
+            # semantic order — preserve it exactly (do NOT sort).
+            has_semantic_order = False
+            if col_lower in bin_labels_map:
+                unique_vals = [str(label) for label in bin_labels_map[col_lower]]
+                has_semantic_order = True
+            elif col_lower in map_groups_map:
+                unique_vals = [str(group) for group in map_groups_map[col_lower]]
+                has_semantic_order = True
+            elif col in df.columns:
+                raw_unique = df[col].dropna().astype(str).unique()
+                unique_vals = sorted(raw_unique.tolist())
+            else:
+                results.append({
+                    "Column": col,
+                    "Encoding": encoding,
+                    "Reason": reason,
+                    "Mapping": [],
+                })
+                continue
+
+            # ── Label Encoding ───────────────────────────────────────────
+            if encoding == ENC_LABEL:
+                # When binning config provides semantic order, use it
+                # directly as the category sequence (0, 1, 2…).
+                # Otherwise fall back to OrdinalEncoder's alphabetical sort.
+                if has_semantic_order:
+                    categories = unique_vals  # already in semantic order
+                else:
+                    encoder = OrdinalEncoder(
+                        handle_unknown="use_encoded_value",
+                        unknown_value=-1,
+                    )
+                    vals_array = np.array(unique_vals).reshape(-1, 1)
+                    encoder.fit(vals_array)
+                    categories = encoder.categories_[0].tolist()
+
+                mapping = [
+                    {"Original": str(cat_val), "Encoded": code}
+                    for code, cat_val in enumerate(categories)
+                ]
+                results.append({
+                    "Column": col,
+                    "Encoding": encoding,
+                    "Reason": reason,
+                    "Mapping": mapping,
+                })
+
+            # ── One-Hot Encoding: simulate get_dummies(drop_first) ───────
+            elif encoding == ENC_ONEHOT:
+                sorted_vals = sorted(unique_vals)
+                dropped_val = sorted_vals[0] if sorted_vals else None
+                mapping = []
+                for val in sorted_vals:
+                    if val == dropped_val:
+                        mapping.append({
+                            "Original": str(val),
+                            "Encoded": "Dropped (reference)",
+                        })
+                    else:
+                        mapping.append({
+                            "Original": str(val),
+                            "Encoded": f"{col}_{val}  →  0 / 1",
+                        })
+                results.append({
+                    "Column": col,
+                    "Encoding": encoding,
+                    "Reason": reason,
+                    "Mapping": mapping,
+                })
+
+        return results
+
+    @staticmethod
     def apply_feature_encoding(
         df: pd.DataFrame,
         candidates: Optional[List[Dict[str, Any]]] = None,
+        binning_config: Optional[Dict[str, Any]] = None,
     ) -> pd.DataFrame:
         """
         Encode categorical features using the hybrid strategy.
@@ -1017,14 +1201,22 @@ class PreprocessingEngine:
             ``Education`` when ``Education_Num`` exists).
           - **Label Encoding**: Ordinal / binary columns are mapped to
             integer codes via ``sklearn.preprocessing.OrdinalEncoder``.
+            When *binning_config* is provided, columns whose labels
+            originate from the config are encoded in **semantic order**
+            (config label sequence) instead of the default alphabetical
+            sort — e.g. ``"≤25"→0, "26-35"→1, … ">65"→5``.
           - **One-Hot (drop_first)**: Nominal columns are expanded into
             binary indicator columns via ``pd.get_dummies`` with
             ``drop_first=True`` to avoid multicollinearity.
 
         Args:
-            df:         Input DataFrame (modified in-place for performance).
-            candidates: Output of ``get_encoding_preview()``.
-                        When ``None``, candidates are auto-detected.
+            df:             Input DataFrame (modified in-place for performance).
+            candidates:     Output of ``get_encoding_preview()``.
+                            When ``None``, candidates are auto-detected.
+            binning_config: Dict from ``db_config_manager`` (rule key
+                            ``'binning_config'``).  When provided, Label
+                            Encoding uses the config's label order as the
+                            semantic category sequence.
 
         Returns:
             DataFrame with all categorical columns encoded as numeric.
@@ -1036,6 +1228,12 @@ class PreprocessingEngine:
 
         if not candidates:
             return df
+
+        # ── Build semantic-order lookup from binning config ──────────────
+        bin_labels_map, map_groups_map = _parse_binning_config(binning_config)
+        semantic_order: Dict[str, List[str]] = {
+            **bin_labels_map, **map_groups_map,
+        }
 
         label_cols: List[str] = []
         onehot_cols: List[str] = []
@@ -1074,10 +1272,23 @@ class PreprocessingEngine:
             non_null = df[col].notna()
             if not non_null.any():
                 continue
-            encoder = OrdinalEncoder(
-                handle_unknown="use_encoded_value",
-                unknown_value=-1,
-            )
+
+            # Use semantic order from binning config when available
+            col_lower = col.lower()
+            config_categories = semantic_order.get(col_lower)
+
+            if config_categories:
+                encoder = OrdinalEncoder(
+                    categories=[config_categories],
+                    handle_unknown="use_encoded_value",
+                    unknown_value=-1,
+                )
+            else:
+                encoder = OrdinalEncoder(
+                    handle_unknown="use_encoded_value",
+                    unknown_value=-1,
+                )
+
             values = df.loc[non_null, col].astype(str).values.reshape(-1, 1)
             df.loc[non_null, col] = encoder.fit_transform(values).ravel().astype(int)
             df[col] = pd.to_numeric(df[col], errors="coerce")
@@ -1407,4 +1618,52 @@ class PreprocessingEngine:
             "icon": ":material/straighten:",
             "color": STEP_COLORS[9],
         },
+    ]
+
+
+def compute_after_metrics(
+    df_cleaned: pd.DataFrame,
+    initial_missing: int,
+    noise_cleaned: int,
+    initial_dupes: int,
+    total_outliers_before: int,
+) -> list:
+    """Compute post-pipeline quality comparison rows.
+
+    Evaluates the cleaned DataFrame (post Step 5) against the pre-pipeline
+    counts to produce the Before/After comparison table used in the
+    completion banner.
+
+    Args:
+        df_cleaned:            Cleaned DataFrame snapshot (after Step 5).
+        initial_missing:       Total NaN count before any processing.
+        noise_cleaned:         Noise cells replaced with NaN in Step 2.
+        initial_dupes:         Duplicate row count before Step 3.
+        total_outliers_before: Total outlier cells treated in Step 5.
+
+    Returns:
+        List of ``(label, before, after)`` tuples.
+    """
+    from modules.core.audit_engine import _compute_noise_mask
+
+    after_missing = int(df_cleaned.isna().sum().sum())
+    after_dupes = int(df_cleaned.duplicated().sum())
+
+    # Re-compute noise after cleaning — delegate to single source of truth
+    cat_cols = df_cleaned.select_dtypes(include=["object"]).columns.tolist()
+    after_noise = 0
+    for col_name in cat_cols:
+        series = df_cleaned[col_name].dropna().astype(str)
+        after_noise += int(_compute_noise_mask(series).sum())
+
+    # Outliers were capped to fence boundaries — re-detecting with fresh
+    # statistics causes "fence compression" (tighter bounds → spurious new
+    # outliers).  After ≡ 0 by design.
+    after_outliers = 0
+
+    return [
+        ("Missing Values", initial_missing + noise_cleaned, after_missing),
+        ("Noise Values", noise_cleaned, after_noise),
+        ("Duplicate Rows", initial_dupes, after_dupes),
+        ("Outliers", total_outliers_before, after_outliers),
     ]
