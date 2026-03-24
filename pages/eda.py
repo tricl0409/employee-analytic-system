@@ -1,12 +1,11 @@
 """
 eda.py — Employee Data Insight Page (EDA)
 
-Tab-based analysis dashboard with 5 tabs:
+Tab-based analysis dashboard with 4 tabs:
   1. Income Overview — distribution, association metrics, top features
   2. Career & Earning Factors — occupation, education, age, working hours
   3. Investment Income Analysis — capital gain patterns by demographics
   4. Gender Income Gap — gender-based disparity by occupation & wealth
-  5. High-Income Archetype — composite profile of typical high earners
 """
 
 import streamlit as st
@@ -41,8 +40,10 @@ _C_HIGH = STATUS_COLORS["warning"]["hex"]   # Amber  — high income (>50K)
 _STRIP_KEYS = {"legend", "margin"}
 
 # Section header accent (amber — consistent with insight boxes)
-_ACCENT_AMBER = "#FF9F43"
-_ACCENT_TEAL  = "#2DD4BF"
+_ACCENT_AMBER   = "#FF9F43"
+_ACCENT_TEAL    = "#2DD4BF"
+_ACCENT_EMERALD = "#10B981"
+_ACCENT_VIOLET  = "#8B5CF6"
 
 # Shared amber colorscale for heatmaps (transparent → amber gradient)
 _AMBER_SCALE = [
@@ -52,13 +53,13 @@ _AMBER_SCALE = [
     [1.0, "rgba(255,159,67,0.80)"],
 ]
 
-# Education color palette — gradient from low → high education
+# Education color palette — amber family with strong contrast between levels
 _EDU_COLORS = {
-    "Basic":      "rgba(180,160,140,0.55)",     # Warm gray — lowest
-    "HS-grad":    "rgba(255,190,120,0.45)",     # Light amber
-    "Some/Assoc": "rgba(255,159,67,0.55)",      # Mid amber
-    "Bachelors":  "rgba(255,140,40,0.72)",      # Strong amber
-    "Advanced":   "rgba(255,120,20,0.90)",      # Deep amber/orange
+    "Basic":      "rgba(160,150,140,0.40)",     # Faded warm gray — lowest
+    "HS-grad":    "rgba(217,175,120,0.55)",      # Tan / light khaki
+    "Some/Assoc": "rgba(245,180,60,0.68)",       # Warm gold
+    "Bachelors":  "rgba(255,140,30,0.82)",       # Rich orange
+    "Advanced":   "rgba(240,90,20,0.95)",        # Deep burnt orange — highest
 }
 
 # Education sort order (descending: highest level first)
@@ -458,7 +459,7 @@ def _render_section1(df: pd.DataFrame, income_col: str) -> None:
             f"<b>{pct_high}%</b> ({n_high:,}) reach High Income (>50K) "
             f"— a ratio of approximately <b>{ratio}:1</b>. "
             f"This class imbalance suggests that high income is driven "
-            f"by specific structural factors worth exploring."
+            f"by specific structural factors worth exploring.",
         ),
         unsafe_allow_html=True,
     )
@@ -516,9 +517,11 @@ def _compute_correlation_scores(
         "association": corr_series.values.round(3),
     })
     if not result_df.empty:
-        result_df = result_df.reindex(
-            result_df["association"].abs().sort_values(ascending=False).index,
-        ).reset_index(drop=True)
+        result_df["abs_assoc"] = result_df["association"].abs()
+        result_df = result_df.sort_values(
+            by=["abs_assoc", "attribute"],
+            ascending=[False, True],
+        ).drop(columns=["abs_assoc"]).reset_index(drop=True)
     return result_df
 
 
@@ -542,8 +545,12 @@ def _chart_correlation_bar(corr_df: pd.DataFrame) -> go.Figure | None:
 def _render_section2(
     df: pd.DataFrame,
     income_col: str,
-) -> None:
-    """Render Feature Correlation bar chart (encoded data) + Insight."""
+) -> pd.DataFrame | None:
+    """Render Feature Correlation bar chart (encoded data) + Insight.
+
+    Returns:
+        Filtered corr_df (|r| >= threshold) or None.
+    """
     _section_header(
         "Feature Correlation with Income",
         subtitle="Pearson r — features encoded via domain-knowledge ordinal mapping",
@@ -555,13 +562,13 @@ def _render_section2(
 
     if corr_df.empty:
         styled_alert("Insufficient data to compute correlations.", "info")
-        return
+        return None
 
     # Filter: only features with |r| >= 20%
     corr_df = corr_df[corr_df["association"].abs() >= _CORR_DISPLAY_THRESHOLD].reset_index(drop=True)
     if corr_df.empty:
         styled_alert("No features have |r| ≥ 0.20 with Income.", "info")
-        return
+        return None
 
     # Rename education_num → education for display
     corr_df = corr_df.copy()
@@ -595,6 +602,8 @@ def _render_section2(
         ),
         unsafe_allow_html=True,
     )
+
+    return corr_df
 
 
 # ==============================================================================
@@ -945,12 +954,14 @@ def _chart_hbar_rate(
     group_col: str,
     title: str,
     top_n: int = 0,
+    bar_accent: str = "255,159,67",
 ) -> go.Figure:
     """
     Horizontal bar: high-income rate by category.
 
     Args:
-        top_n: If > 0, show only top N categories by count. 0 = show all.
+        top_n:       If > 0, show only top N categories by count. 0 = show all.
+        bar_accent:  RGB string (e.g. '239,68,68') for bar gradient color.
     """
     hi_mask = _high_mask(df[income_col])
     rate = hi_mask.groupby(df[group_col].astype(str)).mean()
@@ -962,7 +973,7 @@ def _chart_hbar_rate(
     rate = rate.sort_values(ascending=True)
     rate_pct = (rate * 100).round(1)
     mx = max(rate_pct.max(), 0.01)
-    colors = [f"rgba(255,159,67,{0.3 + 0.7 * v / mx:.2f})" for v in rate_pct.values]
+    colors = [f"rgba({bar_accent},{0.3 + 0.7 * v / mx:.2f})" for v in rate_pct.values]
 
     fig = go.Figure(go.Bar(
         y=rate_pct.index.tolist(),
@@ -1038,97 +1049,151 @@ def _render_section4(
     df_raw: pd.DataFrame,
     df_binned: pd.DataFrame,
     income_col: str,
+    corr_df: pd.DataFrame | None = None,
 ) -> None:
     """
     Render Demographic Breakdown of High Income.
 
-    Dynamically picks the top 4 features from correlation scores
-    (same computation as Section 2, using raw data) and renders
-    hbar charts + insights from binned data.
+    Groups features into tiers by correlation strength (|r|):
+      - Strong Impact   : |r| >= 0.40
+      - Moderate Impact : 0.30 <= |r| < 0.40
+      - Notable Impact  : 0.20 <= |r| < 0.30
+    Each tier gets its own sub-header, chart grid, and insight box.
     """
-    # Compute correlation on raw data (same source as Section 2 heatmap)
-    assoc_df = _compute_correlation_scores(df_raw, income_col)
+    # Use pre-computed corr_df if available, otherwise compute fresh
+    if corr_df is None or corr_df.empty:
+        assoc_df = _compute_correlation_scores(df_raw, income_col)
+        assoc_df = assoc_df[assoc_df["association"].abs() >= _CORR_DISPLAY_THRESHOLD].reset_index(drop=True)
+    else:
+        assoc_df = corr_df.copy()
 
     if len(assoc_df) < 1:
         styled_alert("Insufficient data for demographic breakdown.", "info")
         return
 
-    top4 = assoc_df.head(4)
-    top4_features = top4["attribute"].tolist()
-    top4_scores = top4["association"].tolist()
-
     # education_num fallback: use 'education' column for breakdown charts
-    top4_features = [
-        "education" if f == "education_num" and "education" in df_binned.columns
-        else f
-        for f in top4_features
-    ]
+    assoc_df["attribute"] = assoc_df["attribute"].apply(
+        lambda f: "education" if f == "education_num" and "education" in df_binned.columns else f
+    )
 
-    # Build subtitle dynamically from top-4 feature names
-    subtitle_features = ", ".join(top4_features[:3])
-    if len(top4_features) >= 4:
-        subtitle_features += f", and {top4_features[3]}"
-
+    # ── Main section header ───────────────────────────────────────────
     _section_header(
         "Demographic Breakdown of High Income",
-        subtitle=f"High Income Rate across the top associated features: {subtitle_features}",
+        subtitle="High Income Rate across strongly associated features, grouped by correlation strength",
         icon_name="zap",
     )
 
-    col_charts, col_insights = st.columns([3, 2], gap="medium")
+    # ── Tier definitions ──────────────────────────────────────────────
+    _TIERS = [
+        {
+            "label": "Strong Impact",
+            "range": "r ≥ 0.40",
+            "min": 0.40, "max": 1.01,
+            "accent": "#EF4444",
+            "icon": "alert_triangle",
+        },
+        {
+            "label": "Moderate Impact",
+            "range": "0.30 ≤ r < 0.40",
+            "min": 0.30, "max": 0.40,
+            "accent": "#F59E0B",
+            "icon": "trending_up",
+        },
+        {
+            "label": "Notable Impact",
+            "range": "0.20 ≤ r < 0.30",
+            "min": 0.20, "max": 0.30,
+            "accent": "#3B82F6",
+            "icon": "bar_chart",
+        },
+    ]
 
-    with col_charts:
-        # Row 1: feature 1 + feature 2
-        c1, c2 = st.columns(2)
-        for idx, (col_slot, feat, score) in enumerate(
-            zip([c1, c2], top4_features[:2], top4_scores[:2])
-        ):
-            with col_slot:
+    chart_idx = 0  # global chart key counter
+
+    for tier in _TIERS:
+        tier_mask = (assoc_df["association"].abs() >= tier["min"]) & (assoc_df["association"].abs() < tier["max"])
+        tier_df = assoc_df[tier_mask].reset_index(drop=True)
+
+        if tier_df.empty:
+            continue
+
+        tier_features = tier_df["attribute"].tolist()
+        tier_scores = tier_df["association"].tolist()
+
+        feat_tags = ", ".join(
+            f"<b style='color:{tier['accent']}'>{f}</b> ({s:+.3f})"
+            for f, s in zip(tier_features, tier_scores)
+        )
+
+        # ── Tier sub-header ───────────────────────────────────────────
+        hex_val = tier["accent"].lstrip("#")
+        r_val, g_val, b_val = int(hex_val[0:2], 16), int(hex_val[2:4], 16), int(hex_val[4:6], 16)
+        rgb = f"{r_val},{g_val},{b_val}"
+        icon_html = get_icon(tier["icon"], size=14, color=tier["accent"])
+
+        st.markdown(
+            f'<div style="margin:20px 0 12px 0;padding:10px 16px;'
+            f'background:rgba({rgb},0.06);'
+            f'border-left:3px solid rgba({rgb},0.5);'
+            f'border-radius:0 8px 8px 0;">'
+            f'<div style="display:flex;align-items:center;gap:8px;">'
+            f'{icon_html}'
+            f'<span style="font-size:0.92rem;font-weight:700;'
+            f'color:rgba(255,255,255,0.88);">{tier["label"]}</span>'
+            f'<span style="font-size:0.72rem;color:rgba(255,255,255,0.35);'
+            f'margin-left:4px;">({tier["range"]})</span>'
+            f'</div>'
+            f'<div style="font-size:0.76rem;color:rgba(255,255,255,0.40);'
+            f'margin-top:4px;line-height:1.6;">{feat_tags}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+        # ── Charts + Insight side by side ─────────────────────────────
+        col_charts, col_insights = st.columns([3, 2], gap="medium")
+
+        with col_charts:
+            for i in range(0, len(tier_features), 2):
+                c1, c2 = st.columns(2)
+                for j, col_slot in enumerate([c1, c2]):
+                    feat_idx = i + j
+                    if feat_idx < len(tier_features):
+                        feat = tier_features[feat_idx]
+                        with col_slot:
+                            if feat in df_binned.columns:
+                                # Convert tier accent hex to RGB for bar coloring
+                                th = tier["accent"].lstrip("#")
+                                tier_rgb = f"{int(th[0:2],16)},{int(th[2:4],16)},{int(th[4:6],16)}"
+                                fig = _chart_hbar_rate(
+                                    df_binned, income_col, feat,
+                                    title=f"High Income Rate by {feat}",
+                                    bar_accent=tier_rgb,
+                                )
+                                st.plotly_chart(
+                                    fig, use_container_width=True,
+                                    key=f"ch_s4_{chart_idx}",
+                                )
+                        chart_idx += 1
+
+        with col_insights:
+            bullets = []
+            for feat, score in zip(tier_features, tier_scores):
                 if feat in df_binned.columns:
-                    fig = _chart_hbar_rate(
-                        df_binned, income_col, feat,
-                        title=f"High Income Rate by {feat}",
-                    )
-                    st.plotly_chart(
-                        fig, use_container_width=True,
-                        key=f"ch_s4_{idx}",
+                    bullets.append(
+                        _compute_feature_insight(
+                            df_binned, feat, income_col, score,
+                        )
                     )
 
-        # Row 2: feature 3 + feature 4
-        if len(top4_features) > 2:
-            c3, c4 = st.columns(2)
-            for idx, (col_slot, feat, score) in enumerate(
-                zip([c3, c4], top4_features[2:4], top4_scores[2:4]),
-                start=2,
-            ):
-                with col_slot:
-                    if feat in df_binned.columns:
-                        fig = _chart_hbar_rate(
-                            df_binned, income_col, feat,
-                            title=f"High Income Rate by {feat}",
-                        )
-                        st.plotly_chart(
-                            fig, use_container_width=True,
-                            key=f"ch_s4_{idx}",
-                        )
-
-    with col_insights:
-        bullets = []
-        for feat, score in zip(top4_features, top4_scores):
-            if feat in df_binned.columns:
-                bullets.append(
-                    _compute_feature_insight(
-                        df_binned, feat, income_col, score,
-                    )
+            if bullets:
+                st.markdown(
+                    _insight_list_box(
+                        bullets,
+                        title=f"{tier['label']} — Key Findings",
+                        icon=tier["icon"],
+                    ),
+                    unsafe_allow_html=True,
                 )
-
-        if bullets:
-            st.markdown(
-                _insight_list_box(bullets, title="Key Findings", icon="bar_chart"),
-                unsafe_allow_html=True,
-            )
-        else:
-            styled_alert("Insufficient data for insight analysis.", "info")
 
 
 # ==============================================================================
@@ -2174,188 +2239,6 @@ def _render_section14(
     )
 
 
-# ==============================================================================
-# SECTION 15 — Typical High-Income Profile
-# ==============================================================================
-
-def _render_section15(
-    df: pd.DataFrame,
-    df_binned: pd.DataFrame,
-    cols: dict[str, str | None],
-    income_col: str,
-) -> None:
-    """High-Income Archetype: enhanced profile bullets + education stacked bar."""
-    _section_header(
-        "High-Income Archetype Profile",
-        subtitle="Composite demographic, career, and investment traits of typical high earners — synthesized from all preceding analysis",
-        icon_name="zap",
-    )
-
-    occ_col = cols.get("occupation")
-    edu_col = cols.get("education")
-    sex_col = cols.get("sex")
-    marital_col = cols.get("marital")
-    capgain_col = cols.get("capital_gain")
-    age_col = cols.get("age")
-    hours_col = cols.get("hours")
-
-    hi_mask = _high_mask(df[income_col])
-    hi_df = df[hi_mask].copy()
-    hi_binned = df_binned[hi_mask]
-    high_count = len(hi_df)
-
-    if high_count == 0:
-        styled_alert("No High Income records found.", "info")
-        return
-
-    # Build profile bullets from data — using binned where available
-    bullets: list[str] = []
-    # Defaults for insight archetype (overwritten below if columns exist)
-    top_sex, top_m, top_occ = "N/A", "N/A", "N/A"
-
-    # Most common sex + percentage
-    if sex_col and sex_col in hi_df.columns:
-        sex_vc = hi_df[sex_col].astype(str).str.strip().value_counts()
-        if not sex_vc.empty:
-            top_sex = sex_vc.index[0]
-            top_sex_pct = round(sex_vc.iloc[0] / high_count * 100, 1)
-            bullets.append(f"<b>{top_sex}</b> — {top_sex_pct}% of high earners")
-
-    # Median age
-    if age_col and age_col in hi_df.columns:
-        ages = pd.to_numeric(hi_df[age_col], errors="coerce").dropna()
-        if not ages.empty:
-            median_age = int(ages.median())
-            bullets.append(f"Median age: <b>{median_age}</b>")
-
-    # Most common marital status (binned)
-    if marital_col and marital_col in hi_binned.columns:
-        marital_vc = hi_binned[marital_col].astype(str).value_counts()
-        if not marital_vc.empty:
-            top_m = marital_vc.index[0]
-            top_m_pct = round(marital_vc.iloc[0] / high_count * 100, 1)
-            bullets.append(f"<b>{top_m}</b> — {top_m_pct}%")
-
-    # Most common education (binned)
-    if edu_col and edu_col in hi_binned.columns:
-        edu_vc = hi_binned[edu_col].astype(str).value_counts()
-        if not edu_vc.empty:
-            top_edu = edu_vc.index[0]
-            top_edu_pct = round(edu_vc.iloc[0] / high_count * 100, 1)
-            bullets.append(f"<b>{top_edu}</b> education — {top_edu_pct}%")
-
-    # Most common occupation (binned)
-    if occ_col and occ_col in hi_binned.columns:
-        occ_vc = hi_binned[occ_col].astype(str).value_counts()
-        if not occ_vc.empty:
-            top_occ = occ_vc.index[0]
-            top_occ_pct = round(occ_vc.iloc[0] / high_count * 100, 1)
-            bullets.append(f"<b>{top_occ}</b> occupation — {top_occ_pct}%")
-
-    # Average hours/week
-    if hours_col and hours_col in hi_df.columns:
-        hrs = pd.to_numeric(hi_df[hours_col], errors="coerce").dropna()
-        if not hrs.empty:
-            avg_hrs = round(hrs.mean(), 1)
-            bullets.append(f"Avg <b>{avg_hrs}</b> hrs/week")
-
-    # Capital gain
-    if capgain_col and capgain_col in hi_df.columns:
-        cg = pd.to_numeric(hi_df[capgain_col], errors="coerce")
-        pct_cg = round((cg > 0).sum() / high_count * 100, 1) if high_count else 0
-        if pct_cg > 0:
-            bullets.append(f"<b>{pct_cg}%</b> have investment income (Capital Gain)")
-
-    # Key Takeaway card — full-width
-    if bullets:
-        st.markdown(
-            _insight_list_box(
-                bullets, title="Key Takeaway", icon="zap", flex_wrap=True,
-            ),
-            unsafe_allow_html=True,
-        )
-
-    _row_spacer()
-
-    # Stacked bar — ALL High Income earners (both genders)
-    if occ_col and edu_col and occ_col in hi_binned.columns and edu_col in hi_binned.columns:
-        ct = pd.crosstab(
-            hi_binned[occ_col].astype(str),
-            hi_binned[edu_col].astype(str),
-            normalize="index",
-        ) * 100
-
-        # Sort occupations by Advanced+Bachelors % descending
-        top_edu_cols = [e for e in _EDU_ORDER[:2] if e in ct.columns]
-        if top_edu_cols:
-            ct["_sort"] = ct[top_edu_cols].sum(axis=1)
-        else:
-            ct["_sort"] = 0
-        ct = ct.sort_values("_sort", ascending=True).drop(columns=["_sort"])
-
-        # Order education columns by _EDU_ORDER
-        sorted_edu_cols = [e for e in _EDU_ORDER if e in ct.columns]
-        remaining_cols = [c for c in ct.columns if c not in sorted_edu_cols]
-        ct = ct[sorted_edu_cols + remaining_cols]
-
-        fig = go.Figure()
-        for edu_group in ct.columns:
-            color = _EDU_COLORS.get(edu_group, "rgba(148,163,184,0.5)")
-            vals = ct[edu_group].round(1).values
-            fig.add_trace(go.Bar(
-                y=ct.index.tolist(),
-                x=vals,
-                name=edu_group,
-                orientation="h",
-                marker=dict(color=color),
-                text=[f"{v:.0f}%" if v >= 5 else "" for v in vals],
-                textposition="inside",
-                textfont=dict(size=9, color=BRIGHT_TEXT),
-                hovertemplate=(
-                    f"<b>%{{y}}</b><br>{edu_group}: <b>%{{x:.1f}}%</b><extra></extra>"
-                ),
-            ))
-
-        fig.update_layout(
-            **_base_layout(),
-            height=max(320, len(ct) * 40),
-            barmode="stack",
-            margin=dict(l=150, r=30, t=30, b=70),
-            title=dict(
-                text="Education Composition within Occupation (High Income Earners)",
-                font=dict(size=11, color=MUTED_COLOR),
-                x=0.5, xanchor="center",
-            ),
-            legend=dict(
-                orientation="h", y=-0.20, x=0.5, xanchor="center",
-                font=dict(size=10, color=MUTED_COLOR),
-            ),
-            xaxis=dict(
-                range=[0, 100],
-                tickfont=dict(color=MUTED_COLOR, size=9),
-                title=dict(text="% within Occupation", font=dict(color=MUTED_COLOR, size=10)),
-            ),
-            yaxis=dict(tickfont=dict(color=MUTED_COLOR, size=10)),
-        )
-        st.plotly_chart(
-            apply_global_theme(fig), use_container_width=True, key="ch_profile_stacked",
-        )
-
-        # Concluding insight
-        top_occ_name = ct.index[-1]  # Last row = highest Advanced+Bachelors %
-        top_occ_adv = round(ct.loc[top_occ_name, top_edu_cols].sum(), 1) if top_edu_cols else 0
-        st.markdown(
-            _insight_box(
-                f"Among High Income earners, <b>{top_occ_name}</b> has the highest concentration "
-                f"of advanced education (<b>{top_occ_adv}%</b> Bachelors+). "
-                f"The typical high earner archetype is a <b>{top_sex}</b>, "
-                f"<b>{top_m}</b>, "
-                f"working in <b>{top_occ}</b> roles "
-                f"— this composite profile represents the dominant wealth-building pathway in the dataset."
-            ),
-            unsafe_allow_html=True,
-        )
-
 
 # ==============================================================================
 # MAIN
@@ -2412,7 +2295,6 @@ def main() -> None:
         ":material/work: Career & Earning Factors",
         ":material/attach_money: Investment Income Analysis",
         ":material/wc: Gender Income Gap",
-        ":material/target: High-Income Archetype",
     ]
     tabs = st.tabs(tab_labels)
 
@@ -2438,8 +2320,8 @@ def main() -> None:
             "<b style='color:rgba(255,255,255,0.6);'>ℹ What this tab reveals</b><br>"
             "Overall <b style='color:#F59E0B;'>income class distribution</b>, "
             "<b style='color:#F59E0B;'>feature-level association strength</b> with High Income, "
-            "and a <b style='color:#F59E0B;'>demographic breakdown</b> of the top 4 most "
-            "associated features — showing which categories within each feature "
+            "and a <b style='color:#F59E0B;'>demographic breakdown</b> grouped by impact level "
+            "— showing which categories within each feature "
             "have the highest and lowest High Income Rate."
         )
 
@@ -2448,12 +2330,12 @@ def main() -> None:
         with col_t1a:
             _render_section1(df_raw, income_col)
         with col_t1b:
-            _render_section2(df_raw, income_col)
+            corr_df = _render_section2(df_raw, income_col)
 
         _row_spacer()
 
-        # Demographic Breakdown — top 4 correlated features
-        _render_section4(df_raw, df_binned, income_col)
+        # Demographic Breakdown — all correlated features
+        _render_section4(df_raw, df_binned, income_col, corr_df=corr_df)
 
     # =================================================================
     # TAB 2 — Career & Demographics
@@ -2548,22 +2430,6 @@ def main() -> None:
 
         # Income & CapGain by Sex (side-by-side stacked bars)
         _render_section14(df_raw, df_binned, cols, income_col)
-
-    # =================================================================
-    # TAB 5 — Archetype Profile
-    # =================================================================
-    with tabs[4]:
-        _tab_summary(
-            "<b style='color:rgba(255,255,255,0.6);'>ℹ What this tab reveals</b><br>"
-            "Synthesizes findings from all prior tabs into a single <b style='color:#F59E0B;'>composite archetype</b> "
-            "of the typical high earner. Covers <b style='color:#F59E0B;'>demographics</b> (gender, age, marital status), "
-            "<b style='color:#F59E0B;'>career profile</b> (education, occupation, hours worked), "
-            "and <b style='color:#F59E0B;'>investment behavior</b> (capital gain prevalence) — "
-            "providing an actionable reference for targeting and policy design."
-        )
-
-        # Typical High-Income Profile (summary + chart)
-        _render_section15(df_raw, df_binned, cols, income_col)
 
     section_divider()
 

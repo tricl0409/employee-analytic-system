@@ -406,7 +406,7 @@ STRINGS = {
         # ==========================================================================
         # CONCLUSION
         # ==========================================================================
-        "conclusion_title": "Conclusion & Archetype Profile",
+        "conclusion_title": "Conclusion",
         "conclusion_subtitle": "Interactive portrait of the typical High-Income earner — synthesized from all analysis dimensions.",
         "conclusion_computing": "Computing High-Income Archetype…",
         "conclusion_no_income": "Could not compute archetype — no income column found.",

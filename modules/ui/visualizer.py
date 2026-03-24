@@ -1012,10 +1012,16 @@ def chart_target_correlation(
     if target_corr.empty:
         return None
 
-    # Sort by |r| ascending (top = strongest)
-    target_corr = target_corr.reindex(
-        target_corr.abs().sort_values(ascending=True).index
+    # Sort by |r| ascending (top = strongest), alphabetical descending as tiebreaker
+    sort_df = pd.DataFrame({
+        "feature": target_corr.index,
+        "abs_val": target_corr.abs().values,
+    })
+    sort_df = sort_df.sort_values(
+        by=["abs_val", "feature"],
+        ascending=[True, False],
     )
+    target_corr = target_corr.reindex(sort_df["feature"].values)
 
     # ── Gradient color: intensity scales with |r| ────────────────────────
     max_abs = max(target_corr.abs().max(), 0.01)
