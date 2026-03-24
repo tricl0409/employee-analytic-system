@@ -24,7 +24,9 @@ import io
 import time
 import zipfile
 
+import numpy as np
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
 from modules.core import data_engine, preprocessing_engine
@@ -49,7 +51,7 @@ from modules.ui import (
     render_pipeline_sidebar,
     render_detail_panel,
 )
-from modules.ui.visualizer import chart_target_correlation
+
 
 from modules.utils.localization import get_text
 from modules.utils.helpers import _ensure_workspace_active
@@ -203,6 +205,26 @@ def _run_pipeline(
         df_numeric_trans, base_stem, "_numeric_trans",
     )
 
+    # ── Compute correlation matrix BEFORE dropping fnlwgt (for heatmap) ────
+    corr_matrix = df_numeric_trans.select_dtypes(include=["number"]).corr()
+
+    # ── Drop fnlwgt from all DataFrames & re-save CSVs ────────────────────
+    _DROP_COL = "fnlwgt"
+    for _df in (df_cleaned_snapshot, df, df_numeric_trans):
+        if _DROP_COL in _df.columns:
+            _df.drop(columns=[_DROP_COL], inplace=True)
+
+    # Re-generate CSV bytes without fnlwgt
+    cleaned_filename, df_cleaned_csv = save_with_auto_increment(
+        df_cleaned_snapshot, base_stem, "_cleaned",
+    )
+    encoded_filename, df_encoded_csv = save_with_auto_increment(
+        df, base_stem, "_encoded",
+    )
+    numeric_trans_filename, df_numeric_trans_csv = save_with_auto_increment(
+        df_numeric_trans, base_stem, "_numeric_trans",
+    )
+
     progress.progress(1.0, text=":material/check_circle: Preprocessing complete!")
     time.sleep(0.4)
     progress.empty()
@@ -240,8 +262,8 @@ def _run_pipeline(
         "n_standard_scaled":   n_standard,
         "n_robust_scaled":     n_robust,
         "scaling_candidates":  scaling_candidates,
-        # Correlation matrix (from numeric_trans — cleaned + domain-knowledge encoding)
-        "corr_after":  df_numeric_trans.select_dtypes(include=["number"]).corr(),
+        # Correlation matrix (includes fnlwgt — for heatmap only)
+        "corr_matrix":  corr_matrix,
     }
 
     return df
@@ -301,22 +323,87 @@ def main():
 
         pipeline_done_banner(cleaned_file, rows_bef, rows_aft, dupes, stats=result)
 
-        # ── Target Correlation Chart ──────────────────────────────────────
-        corr_after = result.get("corr_after")
-        if corr_after is not None:
-            fig = chart_target_correlation(corr_after, target_col="income")
-            if fig is not None:
-                st.markdown(
-                    '<div style="font-size:0.75rem;font-weight:700;'
-                    'color:rgba(255,255,255,0.5);text-transform:uppercase;'
-                    'letter-spacing:0.8px;margin:8px 0 4px 0;">'
-                    'Target Correlation — Income</div>'
-                    '<div style="font-size:0.72rem;color:rgba(255,255,255,0.3);'
-                    'margin-bottom:12px;">Pearson correlation of each feature '
-                    'with the target variable, sorted by |r|</div>',
-                    unsafe_allow_html=True,
-                )
-                st.plotly_chart(fig, use_container_width=True, key="target_corr")
+        # ── Feature Correlation Heatmap ───────────────────────────────────
+        corr_matrix = result.get("corr_matrix")
+        if corr_matrix is not None and not corr_matrix.empty:
+            from modules.ui.visualizer import CHART_LAYOUT, MUTED_COLOR, apply_global_theme
+
+            st.markdown(
+                '<div style="margin:20px 0 4px 0;padding:10px 16px;'
+                'background:rgba(255,159,67,0.06);'
+                'border-left:3px solid rgba(255,159,67,0.5);'
+                'border-radius:0 8px 8px 0;">'
+                '<div style="font-size:0.92rem;font-weight:700;'
+                'color:rgba(255,255,255,0.88);">'
+                'Feature Correlation Heatmap</div>'
+                '<div style="font-size:0.76rem;color:rgba(255,255,255,0.40);'
+                'margin-top:4px;line-height:1.6;">'
+                'Pairwise Pearson correlation across all numeric features '
+                'after domain-knowledge encoding</div>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+
+            cols = corr_matrix.columns.tolist()
+            z_vals = np.round(corr_matrix.values, 2)
+
+            # Annotation text — show value only if |r| >= 0.05
+            annotations = []
+            for row_idx, row_label in enumerate(cols):
+                for col_idx, col_label in enumerate(cols):
+                    val = z_vals[row_idx][col_idx]
+                    text = f"{val:.2f}" if abs(val) >= 0.05 else ""
+                    annotations.append(dict(
+                        x=col_label, y=row_label,
+                        text=text,
+                        font=dict(
+                            size=8,
+                            color="rgba(255,255,255,0.85)" if abs(val) >= 0.3
+                            else "rgba(255,255,255,0.45)",
+                        ),
+                        showarrow=False,
+                    ))
+
+            fig = go.Figure(data=go.Heatmap(
+                z=z_vals,
+                x=cols, y=cols,
+                colorscale=[
+                    [0.0,  "#0EA5E9"],
+                    [0.2,  "rgba(14,165,233,0.30)"],
+                    [0.5,  "rgba(30,35,60,0.90)"],
+                    [0.8,  "rgba(255,159,67,0.55)"],
+                    [1.0,  "#F59E0B"],
+                ],
+                zmin=-1, zmax=1,
+                colorbar=dict(
+                    title=dict(text="r", font=dict(color=MUTED_COLOR, size=10)),
+                    tickfont=dict(color=MUTED_COLOR, size=9),
+                    thickness=12, len=0.6,
+                ),
+                hovertemplate="<b>%{x}</b> vs <b>%{y}</b><br>r = %{z:.3f}<extra></extra>",
+            ))
+
+            _strip_keys = {"legend", "margin"}
+            base_layout = {k: v for k, v in CHART_LAYOUT.items() if k not in _strip_keys}
+            fig.update_layout(
+                **base_layout,
+                height=max(600, len(cols) * 45),
+                margin=dict(l=130, r=50, t=20, b=120),
+                xaxis=dict(
+                    tickfont=dict(color=MUTED_COLOR, size=9),
+                    tickangle=-45,
+                ),
+                yaxis=dict(
+                    tickfont=dict(color=MUTED_COLOR, size=9),
+                    autorange="reversed",
+                ),
+                annotations=annotations,
+            )
+            st.plotly_chart(
+                apply_global_theme(fig),
+                use_container_width=True,
+                key="heatmap_corr_after",
+            )
 
         # ── Download buttons ──────────────────────────────────────────────
         zip_buffer = io.BytesIO()

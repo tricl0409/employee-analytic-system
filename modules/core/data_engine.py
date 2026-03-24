@@ -6,9 +6,6 @@ from typing import List, Dict, Any
 
 DATA_DIR = "data/uploads"
 
-# Columns to drop immediately upon load (no analytical value)
-USELESS_COLUMNS_TO_DROP = ["fnlwgt"]
-
 
 def _get_file_mtime(active_file: str) -> float:
     """Get file modification time for cache invalidation."""
@@ -23,11 +20,11 @@ def load_and_standardize(active_file: str, _file_mtime: float = 0.0) -> pd.DataF
     """
     Reads a CSV file and standardizes column names.
     CACHED: Cache is invalidated when file modification time changes.
-    
+
     Args:
         active_file (str): The absolute path to the CSV file.
         _file_mtime (float): File modification timestamp (cache-busting key).
-        
+
     Returns:
         pd.DataFrame: The standardized DataFrame.
     """
@@ -40,12 +37,7 @@ def load_and_standardize(active_file: str, _file_mtime: float = 0.0) -> pd.DataF
         df = pd.read_csv(file_path)
         # Vectorized string operation for column cleaning
         df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
-        
-        # Drop meaningless columns if they exist
-        drop_cols = [c for c in USELESS_COLUMNS_TO_DROP if c in df.columns]
-        if drop_cols:
-            df = df.drop(columns=drop_cols)
-            
+
         return df
     except Exception as e:
         from modules.ui.components import styled_alert

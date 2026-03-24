@@ -43,6 +43,7 @@ _DEFAULT_SAFE_ZONES = {
     "Education_Num":  {"min": 1,  "max": 16},
     "Capital_Gain":   {"min": 0,  "max": 99999},
     "Capital_Loss":   {"min": 0,  "max": 4356},
+    "Hours_per_Week": {"min": 1,  "max": 99},
 }
 
 _DEFAULT_NOISE_PATTERNS = [

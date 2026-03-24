@@ -499,7 +499,7 @@ class UiComponents:
         cat_demo_tags = "".join(_tag(k, CAT_HL,   "anatomy-tag-orange") for k in t('overview_anatomy_cat_demo_tags').split(","))
         cat_fam_tags  = "".join(_tag(k, CAT_HL,   "anatomy-tag-orange") for k in t('overview_anatomy_cat_fam_tags').split(","))
         fin_tags      = "".join(_tag(k, FIN_HL,   "anatomy-tag-orange") for k in t('overview_anatomy_fin_tags').split(","))
-        meta_tags     = "".join(f'<span class="anatomy-tag" style="background: transparent; color: rgba(255,255,255,0.5); border: 1px dashed rgba(255,255,255,0.2); text-decoration: line-through; padding: 2px 10px;">{k.strip()}</span>' for k in t('overview_anatomy_meta_tags').split(","))
+
         target_tags   = "".join(f'<span class="anatomy-tag anatomy-tag-red">{v.strip()}</span>' for v in t('overview_anatomy_target_value').split(","))
         # -- Objective icons from centralized registry --
         icon_bar_chart = get_icon("bar_chart", size=22)
@@ -632,19 +632,7 @@ class UiComponents:
                     {target_tags}
                 </div>
             </div>
-            <div class="anatomy-box" style="
-                border: 1px dashed rgba(255,255,255,0.12);
-                border-left: 3px solid rgba(255,255,255,0.2) !important;
-                background: repeating-linear-gradient(-45deg, rgba(255,255,255,0.015), rgba(255,255,255,0.015) 10px, transparent 10px, transparent 20px);
-                margin-top: 12px;
-            ">
-                <div class="anatomy-title" style="color: rgba(255,255,255,0.55); display: flex; align-items: center; gap: 6px;">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>
-                    {t('overview_anatomy_meta_title')}
-                </div>
-                <div class="anatomy-tags" style="margin-top: 6px;">{meta_tags}</div>
-                <div class="anatomy-note" style="color: rgba(255,255,255,0.45);">{t('overview_anatomy_meta_note')}</div>
-            </div>
+
         </div>
     </div>
 </div>
