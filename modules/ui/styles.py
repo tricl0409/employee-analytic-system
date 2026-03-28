@@ -926,7 +926,7 @@ CHAT_STYLES = """
         border-radius: 16px !important;
         box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.05) !important;
         padding: 16px !important;
-        width: 450px !important;
+        width: 620px !important;
         max-width: 90vw !important;
     }
 
@@ -1050,8 +1050,8 @@ CHAT_STYLES = """
         0%, 80%, 100% { transform: scale(0); opacity: 0; }
         40% { transform: scale(1); opacity: 1; }
     }
-        box-shadow: 0 0 12px rgba(59, 130, 246, 0.2) !important;
-    }
+
+
     div[data-testid="stChatInputTextArea"] {
         color: var(--text-main) !important;
     }

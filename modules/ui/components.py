@@ -2340,29 +2340,20 @@ class UiComponents:
         return lang_clicked, profile_clicked, logout_clicked
     @staticmethod
     def sidebar_ai_chat():
-        """Renders an AI Chat Assistant inside a popover in the sidebar."""
+        """Renders an AI Chat Assistant inside a popover in the sidebar.
+
+        Supports inline chart rendering: if the AI response contains
+        ```chart-python code blocks, they are executed in a sandbox
+        and the resulting Plotly figures are rendered with download buttons.
+        """
         lang = _get_current_lang()
         if 'chat_messages' not in st.session_state:
             st.session_state.chat_messages = []
-        user = st.session_state.get('user', {})
-        username = user.get('username')
-        display_name = user.get('display_name')
-        # Streamlit avatars must be 1-2 characters or a valid URL/emoji.
-        if display_name:
-            words = display_name.split()
-            initials = words[0][0].upper()
-            if len(words) > 1:
-                initials += words[1][0].upper()
-        elif username:
-            initials = username[:2].upper()
-        else:
-            initials = "U"
-        # For chat display, Streamlit sometimes fails with string initials due to font/unicode length.
-        # Ensure we use an emoji to prevent StreamlitAPIException
-        chat_avatar = "👤"
+
         with st.sidebar:
             with st.popover(f":material/smart_toy: {get_text('ai_assistant', lang)}", use_container_width=True):
                 st.markdown(f"**✨ {get_text('ai_assistant', lang)}**")
+
                 # Chat container
                 chat_container = st.container(height=350)
                 with chat_container:
@@ -2370,26 +2361,100 @@ class UiComponents:
                         st.caption(get_text('chat_greeting', lang))
                     for msg in st.session_state.chat_messages:
                         with st.chat_message(msg["role"], avatar=msg["role"]):
-                            st.markdown(msg["content"])
+                            # Re-render: parse for charts in saved responses
+                            UiComponents._render_chat_content(msg["content"], msg.get("_df_key"))
+
                 # Input
                 if prompt := st.chat_input(get_text('chat_placeholder', lang), key="ai_chat_input"):
                     st.session_state.chat_messages.append({"role": "user", "content": prompt})
                     with chat_container:
                         with st.chat_message("user", avatar="user"):
                             st.markdown(prompt)
-                        # LLM response logic
+
+                        # Resolve DataFrame — prefer cleaned over raw
                         from modules.core.llm_engine import stream_llm_response
                         from modules.core.data_engine import load_and_standardize, _get_file_mtime
 
+                        # Always prioritize current workspace data
+                        cleaned = st.session_state.get("cleaned_data")
+                        if cleaned is not None:
+                            df = cleaned
+                            # Mark as cleaned so context builder knows
+                            st.session_state["_chat_data_source"] = "__cleaned__"
+                        else:
+                            df = None
+                            active_file = st.session_state.get("active_file")
+                            if active_file and active_file != get_text('no_data_loaded', lang):
+                                df = load_and_standardize(active_file, _file_mtime=_get_file_mtime(active_file))
+                                st.session_state["_chat_data_source"] = active_file
 
-                        active_file = st.session_state.get("active_file")
-                        df = None
-                        if active_file and active_file != get_text('no_data_loaded', lang):
-                            df = load_and_standardize(active_file, _file_mtime=_get_file_mtime(active_file))
+                        # Detect current page context
+                        page_context = st.session_state.get("current_page", "")
+
                         with st.chat_message("assistant", avatar="assistant"):
-                            # Thinking UI
                             with st.spinner(get_text('chat_thinking', lang)):
-                                response_stream = stream_llm_response(prompt, st.session_state.chat_messages[:-1], df)
+                                response_stream = stream_llm_response(
+                                    prompt,
+                                    st.session_state.chat_messages[:-1],
+                                    df,
+                                    page_context=page_context,
+                                )
                                 response = st.write_stream(response_stream)
-                        st.session_state.chat_messages.append({"role": "assistant", "content": response})
-                        st.rerun()
+
+                        # Store df in session for chart re-rendering on rerun
+                        df_key = f"_chat_df_{len(st.session_state.chat_messages)}"
+                        if df is not None:
+                            st.session_state[df_key] = df
+
+                    st.session_state.chat_messages.append({
+                        "role": "assistant",
+                        "content": response,
+                        "_df_key": df_key,
+                    })
+                    st.rerun()
+
+    @staticmethod
+    def _render_chat_content(content: str, df_key: str = None):
+        """Render a chat message, executing any chart-python code blocks.
+
+        Args:
+            content: The full message content (may contain chart-python blocks).
+            df_key: Session state key where the DataFrame is stored for chart execution.
+        """
+        from modules.core.llm_engine import parse_response_parts, execute_chart_code
+
+        parts = parse_response_parts(content)
+        has_charts = any(p["type"] == "chart" for p in parts)
+
+        if not has_charts:
+            st.markdown(content)
+            return
+
+        # Retrieve DataFrame for chart execution
+        df = st.session_state.get(df_key) if df_key else None
+
+        for part_idx, part in enumerate(parts):
+            if part["type"] == "text":
+                st.markdown(part["content"])
+            elif part["type"] == "chart":
+                try:
+                    fig = execute_chart_code(part["code"], df)
+                    st.plotly_chart(fig, use_container_width=True)
+
+                    # Download button for PNG
+                    try:
+                        img_bytes = fig.to_image(format="png", width=1200, height=500, scale=2)
+                        st.download_button(
+                            label=":material/download: Download PNG",
+                            data=img_bytes,
+                            file_name=f"chart_{part_idx}.png",
+                            mime="image/png",
+                            key=f"dl_chart_{df_key}_{part_idx}",
+                        )
+                    except Exception:
+                        # kaleido may not be installed — skip download
+                        pass
+
+                except Exception as exc:
+                    st.warning(f"⚠️ Chart rendering failed: {exc}")
+                    st.code(part["code"], language="python")
