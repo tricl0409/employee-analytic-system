@@ -30,7 +30,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from modules.core import data_engine, preprocessing_engine
-from modules.core.file_manager import save_with_auto_increment
+from modules.core.file_manager import save_dataframe, save_with_auto_increment
 from modules.core.preprocessing_engine import (
     PreprocessingEngine,
     ENC_LABEL, ENC_ONEHOT, ENC_DROP_REDUNDANT,
@@ -208,22 +208,21 @@ def _run_pipeline(
     # ── Compute correlation matrix BEFORE dropping fnlwgt (for heatmap) ────
     corr_matrix = df_numeric_trans.select_dtypes(include=["number"]).corr()
 
-    # ── Drop fnlwgt from all DataFrames & re-save CSVs ────────────────────
+    # ── Drop fnlwgt from all DataFrames & re-save CSVs (overwrite in place) ──
     _DROP_COL = "fnlwgt"
     for _df in (df_cleaned_snapshot, df, df_numeric_trans):
         if _DROP_COL in _df.columns:
             _df.drop(columns=[_DROP_COL], inplace=True)
 
-    # Re-generate CSV bytes without fnlwgt
-    cleaned_filename, df_cleaned_csv = save_with_auto_increment(
-        df_cleaned_snapshot, base_stem, "_cleaned",
-    )
-    encoded_filename, df_encoded_csv = save_with_auto_increment(
-        df, base_stem, "_encoded",
-    )
-    numeric_trans_filename, df_numeric_trans_csv = save_with_auto_increment(
-        df_numeric_trans, base_stem, "_numeric_trans",
-    )
+    # Overwrite existing files (NOT auto-increment — we already have filenames)
+    save_dataframe(df_cleaned_snapshot, cleaned_filename)
+    save_dataframe(df, encoded_filename)
+    save_dataframe(df_numeric_trans, numeric_trans_filename)
+
+    # Regenerate CSV bytes without fnlwgt for download
+    df_cleaned_csv = df_cleaned_snapshot.to_csv(index=False).encode("utf-8")
+    df_encoded_csv = df.to_csv(index=False).encode("utf-8")
+    df_numeric_trans_csv = df_numeric_trans.to_csv(index=False).encode("utf-8")
 
     progress.progress(1.0, text=":material/check_circle: Preprocessing complete!")
     time.sleep(0.4)

@@ -850,8 +850,8 @@ def main():
     tab_intro, tab1, tab2, tab3 = st.tabs([
         get_text('audit_tab_intro', lang),
         get_text('audit_tab_quality', lang),
-        get_text('audit_tab_profiling', lang),
-        get_text('audit_tab_charts', lang),
+        get_text('audit_tab_charts', lang),       # Swapped tab2 (Charts)
+        get_text('audit_tab_profiling', lang),    # Swapped tab3 (Profiling)
     ])
     with tab_intro:
         _render_dataset_introduction(lang)
@@ -862,11 +862,11 @@ def main():
         _render_duplicate_rows(audit, df, lang)
         _render_inconsistencies(audit, lang)
         _render_low_variance(audit, lang)
-    with tab2:
-        _render_data_summary(df, lang)
-    with tab3:
+    with tab2: # Now Diagnostic Charts
         _render_category_frequency(df, lang)
         _render_risk_inspector(df, lang)
+    with tab3: # Now Statistical Profiling
+        _render_data_summary(df, lang)
 
 if __name__ == "__main__":
     main()

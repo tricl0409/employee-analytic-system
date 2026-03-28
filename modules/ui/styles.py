@@ -1735,6 +1735,152 @@ PREPROCESSING_STYLES = """
     }
 """
 
+# ==============================================================================
+# CONCLUSION PAGE STYLES
+# ==============================================================================
+
+CONCLUSION_STYLES = """
+    /* ── Profile image container ── */
+    .conclusion-img-wrap {
+        border-radius: 20px;
+        overflow: hidden;
+        border: 1px solid rgba(255,159,67,0.25);
+        box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 30px rgba(255,159,67,0.08);
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .conclusion-img-wrap:hover {
+        border-color: rgba(255,159,67,0.45);
+        box-shadow: 0 12px 48px rgba(0,0,0,0.5), 0 0 50px rgba(255,159,67,0.12);
+        transform: translateY(-3px);
+    }
+    .conclusion-img-wrap img {
+        width: 100%;
+        display: block;
+    }
+
+    /* ── Profile card ── */
+    .conclusion-profile-card {
+        background: rgba(22, 27, 48, 0.65);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255,159,67,0.18);
+        border-radius: 20px;
+        padding: 28px 28px 20px 28px;
+        position: relative;
+        overflow: hidden;
+        animation: fadeInUp 0.5s ease-out both;
+    }
+    .conclusion-profile-card::before {
+        content: '';
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 3px;
+        background: linear-gradient(90deg, #FF9F43, #F27024, #FF9F43);
+        background-size: 200% 100%;
+        animation: gradientShift 4s ease infinite;
+    }
+
+    /* ── Trait rows ── */
+    .conclusion-trait {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 10px 0;
+        border-bottom: 1px solid rgba(255,255,255,0.04);
+        animation: fadeInUp 0.4s ease-out both;
+    }
+    .conclusion-trait:last-child {
+        border-bottom: none;
+    }
+    .conclusion-trait-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+    .conclusion-trait-label {
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: rgba(255,255,255,0.40);
+        margin-bottom: 1px;
+    }
+    .conclusion-trait-value {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: rgba(255,255,255,0.92);
+        letter-spacing: -0.2px;
+    }
+    .conclusion-trait-sub {
+        font-size: 0.75rem;
+        color: rgba(255,255,255,0.35);
+        margin-left: 6px;
+    }
+
+    /* ── Key Message cards ── */
+    .conclusion-msg-card {
+        background: rgba(22, 27, 48, 0.75); /* Increased opacity */
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255,159,67,0.15); /* More visible border */
+        border-radius: 16px;
+        padding: 28px 26px; /* Slightly more padding */
+        min-height: 250px;
+        transition: all 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+        animation: fadeInUp 0.5s ease-out both;
+        position: relative;
+        overflow: hidden;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15); /* Added default shadow */
+    }
+    .conclusion-msg-card::before {
+        content: '';
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 3px; /* Slightly thicker */
+        opacity: 0.6; /* Visible by default */
+        transition: opacity 0.35s ease, height 0.35s ease;
+    }
+    .conclusion-msg-card:hover {
+        transform: translateY(-6px); /* Stronger lift */
+        border-color: rgba(255,159,67,0.4); /* Highlight border on hover */
+        box-shadow: 0 16px 40px rgba(255,159,67,0.08), 0 8px 16px rgba(0,0,0,0.4); /* Glow effect */
+    }
+    .conclusion-msg-card:hover::before {
+        opacity: 1;
+        height: 4px;
+    }
+    .conclusion-msg-blue::before { background: linear-gradient(90deg, #3B82F6, #60A5FA); }
+    .conclusion-msg-amber::before { background: linear-gradient(90deg, #F59E0B, #FBBF24); }
+    .conclusion-msg-green::before { background: linear-gradient(90deg, #10B981, #34D399); }
+
+    .conclusion-msg-icon {
+        width: 48px; /* Larger icon container */
+        height: 48px;
+        border-radius: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2); /* Icon depth */
+    }
+    .conclusion-msg-title {
+        font-size: 1.1rem; /* Larger title */
+        font-weight: 800;
+        color: rgba(255,255,255,0.95);
+        letter-spacing: -0.3px;
+        margin-bottom: 12px;
+    }
+    .conclusion-msg-body {
+        font-size: 0.85rem; /* Larger body text */
+        color: rgba(255,255,255,0.65); /* Brighter body text */
+        line-height: 1.8;
+    }
+"""
+
 
 def apply_style(theme="dark_glass"):
     """
@@ -1760,6 +1906,8 @@ def apply_style(theme="dark_glass"):
         {CHAT_STYLES}
         {OVERVIEW_FEATURE_STYLES}
         {PREPROCESSING_STYLES}
+        {CONCLUSION_STYLES}
         </style>
     """, unsafe_allow_html=True)
+
 

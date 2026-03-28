@@ -1,14 +1,13 @@
 """
-conclusion.py — Conclusion: High-Income Archetype Persona
+conclusion.py — Conclusion: High-Income Profile & Key Messages
 
-Interactive persona wheel visualization showing the composite profile
-of a typical high earner, computed from the active dataset.
-
-Interaction: click the persona silhouette to reveal data-driven values
-with staggered CSS animations.
+Two-section layout:
+1. Typical High-Income Profile — image + computed traits card
+2. Key Message Delivery — three actionable insight cards
 """
 
-import math
+import base64
+import os
 
 import pandas as pd
 import streamlit as st
@@ -16,10 +15,10 @@ import streamlit.components.v1 as components
 
 from modules.core import data_engine
 from modules.core.preprocessing_engine import PreprocessingEngine
-from modules.ui import page_header, workspace_status, active_file_scan_progress_bar
+from modules.ui import page_header, workspace_status, active_file_scan_progress_bar, section_divider
 from modules.ui.components import styled_alert
 from modules.ui.icons import get_icon
-from modules.utils.helpers import _ensure_workspace_active
+from modules.utils.helpers import _ensure_workspace_active, _high_mask
 from modules.utils.localization import get_text
 
 
@@ -30,6 +29,31 @@ from modules.utils.localization import get_text
 _AMBER = "#FF9F43"
 _AMBER_DIM = "rgba(255,159,67,0.08)"
 _AMBER_BORDER = "rgba(255,159,67,0.22)"
+
+_BLUE = "#3B82F6"
+_GREEN = "#10B981"
+
+# Trait icon colors — consistent visual mapping
+_TRAIT_COLORS = {
+    "marital": ("#8B5CF6", "rgba(139,92,246,0.15)"),
+    "education": ("#10B981", "rgba(16,185,129,0.15)"),
+    "occupation": ("#F59E0B", "rgba(245,158,11,0.15)"),
+    "capital": ("#6366F1", "rgba(99,102,241,0.15)"),
+    "hours": ("#EC4899", "rgba(236,72,153,0.15)"),
+    "age": ("#3B82F6", "rgba(59,130,246,0.15)"),
+    "gender": ("#FF9F43", "rgba(255,159,67,0.15)"),
+}
+
+# Trait icon keys from the icons registry
+_TRAIT_ICONS = {
+    "marital": "heart",
+    "education": "graduation_cap",
+    "occupation": "briefcase",
+    "capital": "trending_up",
+    "hours": "clock",
+    "age": "users",
+    "gender": "user_icon",
+}
 
 
 # ==============================================================================
@@ -46,10 +70,9 @@ def _resolve(df: pd.DataFrame) -> dict:
         "hours": "hours_per_week" if "hours_per_week" in df.columns else None,
         "sex": "sex" if "sex" in df.columns else "gender" if "gender" in df.columns else None,
         "marital": "marital_status" if "marital_status" in df.columns else None,
+        "relationship": "relationship" if "relationship" in df.columns else None,
         "capital_gain": "capital_gain" if "capital_gain" in df.columns else None,
     }
-
-from modules.utils.helpers import _high_mask
 
 
 def _apply_binning(df: pd.DataFrame) -> pd.DataFrame:
@@ -96,18 +119,22 @@ def _compute_archetype(df: pd.DataFrame) -> dict:
         if not sex_vc.empty:
             top_sex = sex_vc.index[0]
             top_sex_pct = round(sex_vc.iloc[0] / hi_count * 100, 1)
-            is_male = "male" in top_sex.lower() and "fe" not in top_sex.lower()
-            arch["gender"] = {"label": top_sex, "pct": top_sex_pct, "is_male": is_male}
+            arch["gender"] = {"label": top_sex, "pct": top_sex_pct}
 
-    # 2. Age
+    # 2. Age — compute Q1/Q3 + prime working-age share
     age_col = cols.get("age")
     if age_col and age_col in hi_df.columns:
         ages = pd.to_numeric(hi_df[age_col], errors="coerce").dropna()
         if not ages.empty:
+            q1_val = int(ages.quantile(0.25))
+            q3_val = int(ages.quantile(0.75))
+            prime_mask = ages.between(36, 65)
+            prime_pct = round(prime_mask.sum() / len(ages) * 100, 1)
             arch["age"] = {
                 "median": int(ages.median()),
-                "q1": int(ages.quantile(0.25)),
-                "q3": int(ages.quantile(0.75)),
+                "q1": q1_val,
+                "q3": q3_val,
+                "prime_pct": prime_pct,
             }
 
     # 3. Marital (binned)
@@ -117,12 +144,29 @@ def _compute_archetype(df: pd.DataFrame) -> dict:
         if not m_vc.empty:
             arch["marital"] = {"label": m_vc.index[0], "pct": round(m_vc.iloc[0] / hi_count * 100, 1)}
 
-    # 4. Education (binned)
+    # 4. Education — group higher-education levels (use RAW data for matching)
+    _HIGHER_ED = {"bachelors", "masters", "doctorate", "prof-school",
+                  "bachelor's", "master's", "phd", "professional"}
     edu_col = cols.get("education")
-    if edu_col and edu_col in hi_binned.columns:
-        e_vc = hi_binned[edu_col].astype(str).value_counts()
-        if not e_vc.empty:
-            arch["education"] = {"label": e_vc.index[0], "pct": round(e_vc.iloc[0] / hi_count * 100, 1)}
+    if edu_col and edu_col in hi_df.columns:
+        e_series_raw = hi_df[edu_col].astype(str).str.strip()
+        e_vc_raw = e_series_raw.value_counts()
+        if not e_vc_raw.empty:
+            # Group higher-education categories from raw values
+            higher_mask = e_series_raw.str.lower().isin(_HIGHER_ED)
+            higher_count = higher_mask.sum()
+            higher_pct = round(higher_count / hi_count * 100, 1)
+            top_label = e_vc_raw.index[0]
+            top_pct = round(e_vc_raw.iloc[0] / hi_count * 100, 1)
+            # Use grouped label if it covers significantly more than single top
+            if higher_pct > top_pct + 5:
+                arch["education"] = {
+                    "label": "Bachelor's or higher",
+                    "pct": higher_pct,
+                    "detail": top_label,
+                }
+            else:
+                arch["education"] = {"label": top_label, "pct": top_pct}
 
     # 5. Occupation (binned)
     occ_col = cols.get("occupation")
@@ -131,14 +175,24 @@ def _compute_archetype(df: pd.DataFrame) -> dict:
         if not o_vc.empty:
             arch["occupation"] = {"label": o_vc.index[0], "pct": round(o_vc.iloc[0] / hi_count * 100, 1)}
 
-    # 6. Hours
+    # 6. Relationship (raw — core household roles)
+    rel_col = cols.get("relationship")
+    if rel_col and rel_col in hi_df.columns:
+        r_vc = hi_df[rel_col].astype(str).str.strip().value_counts()
+        if not r_vc.empty:
+            arch["relationship"] = {"label": r_vc.index[0], "pct": round(r_vc.iloc[0] / hi_count * 100, 1)}
+
+    # 7. Hours — full-time (>=40h) and average
     hrs_col = cols.get("hours")
     if hrs_col and hrs_col in hi_df.columns:
         hrs = pd.to_numeric(hi_df[hrs_col], errors="coerce").dropna()
         if not hrs.empty:
-            arch["hours"] = {"avg": round(hrs.mean(), 1), "pct_overtime": round((hrs > 40).sum() / len(hrs) * 100, 1)}
+            arch["hours"] = {
+                "avg": round(hrs.mean(), 1),
+                "pct_fulltime": round((hrs >= 40).sum() / len(hrs) * 100, 1),
+            }
 
-    # 7. Capital Gain
+    # 8. Capital Gain
     cg_col = cols.get("capital_gain")
     if cg_col and cg_col in hi_df.columns:
         cg = pd.to_numeric(hi_df[cg_col], errors="coerce")
@@ -149,231 +203,447 @@ def _compute_archetype(df: pd.DataFrame) -> dict:
 
 
 # ==============================================================================
-# PERSONA WHEEL — HTML/CSS/JS COMPONENT
+# IMAGE LOADER — base64 encode the profile photo
 # ==============================================================================
 
-def _persona_wheel_html(arch: dict, lang: str) -> str:
-    """Generate the full interactive persona wheel as a self-contained HTML page."""
-    t = lambda k, **kw: get_text(k, lang, **kw)
+def _load_profile_image_b64() -> str:
+    """Load high_income_profile.png as a base64 data URI."""
+    assets_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets")
+    img_path = os.path.join(assets_dir, "high_income_profile.png")
+    try:
+        with open(img_path, "rb") as fp:
+            encoded = base64.b64encode(fp.read()).decode("ascii")
+        return f"data:image/png;base64,{encoded}"
+    except Exception:
+        return ""
 
-    gender_info = arch.get("gender", {})
-    is_male = gender_info.get("is_male", True)
-    gender_label = gender_info.get("label", "N/A")
-    gender_pct = gender_info.get("pct", 0)
 
-    age_info = arch.get("age", {})
+# ==============================================================================
+# SECTION 1 — HIGH-INCOME PROFILE (premium HTML component)
+# ==============================================================================
+
+def _build_profile_html(arch: dict, img_b64: str, lang: str) -> str:
+    """Build premium executive-style profile card as self-contained HTML.
+
+    Args:
+        arch: Archetype data computed from the dataset.
+        img_b64: Base64-encoded profile image data URI.
+        lang: Language code.
+
+    Returns:
+        Complete HTML string for the profile component.
+    """
+    t = lambda key, **kw: get_text(key, lang, **kw)
+
+    gender = arch.get("gender", {})
+    age = arch.get("age", {})
     marital = arch.get("marital", {})
+    relationship = arch.get("relationship", {})
     edu = arch.get("education", {})
     occ = arch.get("occupation", {})
     hours = arch.get("hours", {})
-    cg = arch.get("capital_gain", {})
-
+    capital = arch.get("capital_gain", {})
     high_count = arch.get("high_count", 0)
     high_pct = arch.get("high_pct", 0)
 
-    accent = "rgba(59,130,246,0.85)" if is_male else "rgba(236,72,153,0.85)"
-    accent_glow = "rgba(59,130,246,0.25)" if is_male else "rgba(236,72,153,0.25)"
-    accent_dim = "rgba(59,130,246,0.12)" if is_male else "rgba(236,72,153,0.12)"
+    # Build trait items with stat bars
+    traits = []
+    if marital:
+        traits.append({
+            "label": t("conclusion_trait_marital"),
+            "value": marital.get("label", "—"),
+            "pct": marital.get("pct", 0),
+            "color": "#8B5CF6",
+        })
+    if relationship:
+        traits.append({
+            "label": t("conclusion_trait_role"),
+            "value": relationship.get("label", "—"),
+            "pct": relationship.get("pct", 0),
+            "color": "#14B8A6",
+        })
+    if edu:
+        edu_value = edu.get("label", "—")
+        edu_detail = edu.get("detail", "")
+        if edu_detail:
+            edu_value += f' (incl. {edu_detail})'
+        traits.append({
+            "label": t("conclusion_trait_education"),
+            "value": edu_value,
+            "pct": edu.get("pct", 0),
+            "color": "#10B981",
+        })
+    if occ:
+        traits.append({
+            "label": t("conclusion_trait_occupation"),
+            "value": occ.get("label", "—"),
+            "pct": occ.get("pct", 0),
+            "color": "#F59E0B",
+        })
+    if capital:
+        traits.append({
+            "label": t("conclusion_trait_capital"),
+            "value": f'{capital.get("pct", 0)}% {t("conclusion_trait_invest_label")}',
+            "pct": capital.get("pct", 0),
+            "color": "#6366F1",
+        })
+    if hours:
+        traits.append({
+            "label": t("conclusion_trait_hours"),
+            "value": f'{t("conclusion_trait_avg_label", val=hours.get("avg", "—"))}'
+                     f' · {t("conclusion_trait_fulltime_label", pct=hours.get("pct_fulltime", 0))}',
+            "pct": min(hours.get("pct_fulltime", 0), 100),
+            "color": "#EC4899",
+        })
+    if age:
+        prime_pct = age.get("prime_pct", 0)
+        traits.append({
+            "label": t("conclusion_trait_age"),
+            "value": f'{t("conclusion_trait_age_range_label", q1=age.get("q1", "—"), q3=age.get("q3", "—"))}'
+                     f' · {prime_pct}% in prime (36\u201365)',
+            "pct": prime_pct,
+            "color": "#3B82F6",
+        })
+    if gender:
+        traits.append({
+            "label": t("conclusion_trait_gender"),
+            "value": gender.get("label", "—"),
+            "pct": gender.get("pct", 0),
+            "color": "#FF9F43",
+        })
 
-    # 7 segments positioned around the wheel
-    segments = [
+    # Build trait HTML rows with animated stat bars
+    traits_html = ""
+    for idx, tr in enumerate(traits):
+        delay = 0.3 + idx * 0.12
+        traits_html += f"""
+        <div class="trait" style="animation-delay:{delay}s">
+            <div class="trait-header">
+                <span class="trait-label">{tr['label']}</span>
+                <span class="trait-pct" style="color:{tr['color']}">{tr['pct']}%</span>
+            </div>
+            <div class="trait-value">{tr['value']}</div>
+            <div class="stat-bar">
+                <div class="stat-fill" style="width:{tr['pct']}%;background:{tr['color']};animation-delay:{delay + 0.2}s"></div>
+            </div>
+        </div>
+        """
+
+    # Footer line
+    footer_text = t("conclusion_profile_based_on", count=f"{high_count:,}", pct=high_pct)
+
+    return f"""<!DOCTYPE html><html><head>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+html, body {{ background:transparent; font-family:'Inter',sans-serif; color:#fff; overflow:hidden; }}
+
+/* ── Container ── */
+.profile-wrap {{
+    display:flex;
+    gap:0;
+    border-radius:20px;
+    overflow:hidden;
+    border:1px solid rgba(255,159,67,0.20);
+    box-shadow:0 12px 48px rgba(0,0,0,0.5), 0 0 40px rgba(255,159,67,0.06);
+    background:rgba(15,18,35,0.85);
+    backdrop-filter:blur(20px);
+    animation:cardEntry 0.6s ease-out both;
+    position:relative;
+}}
+.profile-wrap::before {{
+    content:'';
+    position:absolute;
+    top:0;left:0;right:0;
+    height:3px;
+    background:linear-gradient(90deg,#FF9F43,#F27024,#FF9F43);
+    background-size:200% 100%;
+    animation:gradShift 4s ease infinite;
+}}
+@keyframes gradShift {{
+    0%   {{ background-position:0% 50%; }}
+    50%  {{ background-position:100% 50%; }}
+    100% {{ background-position:0% 50%; }}
+}}
+@keyframes cardEntry {{
+    from {{ opacity:0; transform:translateY(20px); }}
+    to   {{ opacity:1; transform:translateY(0); }}
+}}
+
+/* ── Photo column ── */
+.photo-col {{
+    width:38%;
+    position:relative;
+    overflow:hidden;
+    flex-shrink:0;
+}}
+.photo-col img {{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    display:block;
+}}
+.photo-overlay {{
+    position:absolute;
+    bottom:0;left:0;right:0;
+    height:55%;
+    background:linear-gradient(to top,rgba(15,18,35,0.95) 0%,rgba(15,18,35,0.4) 60%,transparent 100%);
+    pointer-events:none;
+}}
+.photo-badge {{
+    position:absolute;
+    bottom:20px;left:20px;
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+    z-index:2;
+}}
+.photo-title {{
+    font-size:1.15rem;
+    font-weight:800;
+    color:#fff;
+    letter-spacing:-0.5px;
+    text-shadow:0 2px 12px rgba(0,0,0,0.6);
+}}
+.photo-sub {{
+    font-size:0.7rem;
+    font-weight:600;
+    color:rgba(255,255,255,0.55);
+    text-transform:uppercase;
+    letter-spacing:1.5px;
+}}
+.photo-tag {{
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    padding:4px 12px;
+    background:rgba(255,159,67,0.18);
+    border:1px solid rgba(255,159,67,0.35);
+    border-radius:20px;
+    font-size:0.65rem;
+    font-weight:700;
+    color:#FF9F43;
+    letter-spacing:0.8px;
+    text-transform:uppercase;
+    margin-top:4px;
+    width:fit-content;
+}}
+.photo-tag-dot {{
+    width:6px;height:6px;border-radius:50%;
+    background:#FF9F43;
+    box-shadow:0 0 8px rgba(255,159,67,0.6);
+    animation:dotPulse 2s ease-in-out infinite;
+}}
+@keyframes dotPulse {{
+    0%,100% {{ opacity:1; }}
+    50%     {{ opacity:0.4; }}
+}}
+
+/* ── Stats column ── */
+.stats-col {{
+    flex:1;
+    padding:28px 28px 20px 28px;
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+}}
+
+/* ── Trait row ── */
+.trait {{
+    padding:8px 0;
+    animation:traitIn 0.45s ease-out both;
+}}
+@keyframes traitIn {{
+    from {{ opacity:0; transform:translateX(16px); }}
+    to   {{ opacity:1; transform:translateX(0); }}
+}}
+.trait-header {{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:3px;
+}}
+.trait-label {{
+    font-size:0.68rem;
+    font-weight:700;
+    text-transform:uppercase;
+    letter-spacing:1.2px;
+    color:rgba(255,255,255,0.35);
+}}
+.trait-pct {{
+    font-size:0.72rem;
+    font-weight:800;
+}}
+.trait-value {{
+    font-size:0.88rem;
+    font-weight:700;
+    color:rgba(255,255,255,0.88);
+    margin-bottom:6px;
+    letter-spacing:-0.2px;
+}}
+
+/* ── Stat bar ── */
+.stat-bar {{
+    width:100%;
+    height:4px;
+    border-radius:4px;
+    background:rgba(255,255,255,0.06);
+    overflow:hidden;
+}}
+.stat-fill {{
+    height:100%;
+    border-radius:4px;
+    width:0%;
+    animation:fillBar 1s cubic-bezier(0.4,0,0.2,1) forwards;
+    box-shadow:0 0 8px currentColor;
+}}
+@keyframes fillBar {{
+    from {{ width:0%; }}
+}}
+
+/* ── Footer ── */
+.profile-footer {{
+    text-align:center;
+    font-size:0.7rem;
+    color:rgba(255,255,255,0.25);
+    padding-top:12px;
+    margin-top:auto;
+    border-top:1px solid rgba(255,255,255,0.05);
+    letter-spacing:0.3px;
+}}
+.profile-footer b {{
+    color:#FF9F43;
+    font-weight:700;
+}}
+</style></head><body>
+
+<div class="profile-wrap">
+    <!-- Photo column -->
+    <div class="photo-col">
+        <img src="{img_b64}" alt="High Income Profile" />
+        <div class="photo-overlay"></div>
+        <div class="photo-badge">
+            <div class="photo-title">High-Income<br>Archetype</div>
+            <div class="photo-sub">Data-driven composite</div>
+            <div class="photo-tag">
+                <span class="photo-tag-dot"></span>
+                Top {high_pct}% earners
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats column -->
+    <div class="stats-col">
+        {traits_html}
+        <div class="profile-footer">{footer_text}</div>
+    </div>
+</div>
+
+</body></html>"""
+
+
+def _render_profile_section(arch: dict, lang: str) -> None:
+    """Render the Typical High-Income Profile as a premium HTML component."""
+    t = lambda key, **kw: get_text(key, lang, **kw)
+
+    # Section header
+    icon_svg = get_icon("target", size=18, color=_AMBER)
+    st.markdown(
+        f"<div style='padding:14px 18px;margin-top:4px;margin-bottom:20px;"
+        f"background:linear-gradient(135deg,{_AMBER_DIM} 0%,rgba(255,159,67,0.02) 100%);"
+        f"border:1px solid {_AMBER_BORDER};border-left:3px solid rgba(255,159,67,0.70);"
+        f"border-radius:0 12px 12px 0;'>"
+        f"<div style='display:flex;align-items:center;gap:10px;'>"
+        f"{icon_svg}"
+        f"<span style='font-size:1.08rem;font-weight:800;color:rgba(255,255,255,0.92);"
+        f"letter-spacing:-0.3px;'>{t('conclusion_profile_title')}</span>"
+        f"</div>"
+        f"<div style='font-size:0.76rem;color:rgba(255,255,255,0.38);margin-top:4px;'>"
+        f"{t('conclusion_profile_hint')}"
+        f"</div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+    # Load image and build HTML
+    img_b64 = _load_profile_image_b64()
+    if not img_b64:
+        styled_alert("Profile image not found.", "warning")
+        return
+
+    html_content = _build_profile_html(arch, img_b64, lang)
+    components.html(html_content, height=680, scrolling=False)
+
+
+# ==============================================================================
+# SECTION 2 — KEY MESSAGE DELIVERY
+# ==============================================================================
+
+def _render_messages_section(lang: str) -> None:
+    """Render the 3 Key Message insight cards."""
+    t = lambda key, **kw: get_text(key, lang, **kw)
+
+    # Section header — amber accent (consistent with profile section)
+    icon_svg = get_icon("zap", size=18, color=_AMBER)
+    st.markdown(
+        f"<div style='padding:14px 18px;margin-top:8px;margin-bottom:20px;"
+        f"background:linear-gradient(135deg,{_AMBER_DIM} 0%,rgba(255,159,67,0.02) 100%);"
+        f"border:1px solid {_AMBER_BORDER};border-left:3px solid rgba(255,159,67,0.70);"
+        f"border-radius:0 12px 12px 0;'>"
+        f"<div style='display:flex;align-items:center;gap:10px;'>"
+        f"{icon_svg}"
+        f"<span style='font-size:1.08rem;font-weight:800;color:rgba(255,255,255,0.92);"
+        f"letter-spacing:-0.3px;'>{t('conclusion_msg_title')}</span>"
+        f"</div>"
+        f"<div style='font-size:0.76rem;color:rgba(255,255,255,0.38);margin-top:4px;'>"
+        f"{t('conclusion_msg_hint')}"
+        f"</div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+    # Message card data — all amber accent for page-level consistency
+    messages = [
         {
-            "label": t('conclusion_wheel_gender'), "value": f"{gender_label}", "sub": t('conclusion_wheel_pct_high', pct=gender_pct),
-            "color": "#FF9F43", "angle": -90,
+            "title_key": "conclusion_msg1_title",
+            "body_key": "conclusion_msg1_body",
+            "icon_key": "graduation_cap",
+            "color": _AMBER,
+            "bg": _AMBER_DIM,
+            "css_class": "conclusion-msg-amber",
         },
         {
-            "label": t('conclusion_wheel_age'), "value": t('conclusion_wheel_median', val=age_info.get('median', '—')),
-            "sub": t('conclusion_wheel_iqr', q1=age_info.get('q1', '—'), q3=age_info.get('q3', '—')),
-            "color": "#3B82F6", "angle": -90 + 360 / 7,
+            "title_key": "conclusion_msg2_title",
+            "body_key": "conclusion_msg2_body",
+            "icon_key": "lightbulb",
+            "color": _AMBER,
+            "bg": _AMBER_DIM,
+            "css_class": "conclusion-msg-amber",
         },
         {
-            "label": t('conclusion_wheel_education'), "value": f"{edu.get('label', '—')}",
-            "sub": f"{edu.get('pct', 0)}%",
-            "color": "#10B981", "angle": -90 + 2 * 360 / 7,
-        },
-        {
-            "label": t('conclusion_wheel_occupation'), "value": f"{occ.get('label', '—')}",
-            "sub": f"{occ.get('pct', 0)}%",
-            "color": "#F59E0B", "angle": -90 + 3 * 360 / 7,
-        },
-        {
-            "label": t('conclusion_wheel_marital'), "value": f"{marital.get('label', '—')}",
-            "sub": f"{marital.get('pct', 0)}%",
-            "color": "#8B5CF6", "angle": -90 + 4 * 360 / 7,
-        },
-        {
-            "label": t('conclusion_wheel_hours'), "value": f"Avg {hours.get('avg', '—')}h",
-            "sub": t('conclusion_wheel_overtime', pct=hours.get('pct_overtime', 0)),
-            "color": "#EC4899", "angle": -90 + 5 * 360 / 7,
-        },
-        {
-            "label": t('conclusion_wheel_capital_gain'), "value": f"{cg.get('pct', 0)}%",
-            "sub": t('conclusion_wheel_invest'),
-            "color": "#6366F1", "angle": -90 + 6 * 360 / 7,
+            "title_key": "conclusion_msg3_title",
+            "body_key": "conclusion_msg3_body",
+            "icon_key": "trending_up",
+            "color": _AMBER,
+            "bg": _AMBER_DIM,
+            "css_class": "conclusion-msg-amber",
         },
     ]
 
-    # Compute positions
-    label_items = []
-    arc_items = []
-    connector_items = []
-    angle_step = 360 / len(segments)
-
-    for idx, seg in enumerate(segments):
-        angle_rad = math.radians(seg["angle"])
-        # Label position (outer — percentage of container)
-        lx = 50 + 40 * math.cos(angle_rad)
-        ly = 50 + 40 * math.sin(angle_rad)
-        # Dot position (wheel edge)
-        dx = 50 + 26 * math.cos(angle_rad)
-        dy = 50 + 26 * math.sin(angle_rad)
-
-        text_align = "left" if lx > 55 else ("right" if lx < 45 else "center")
-
-        label_items.append(f"""
-        <div class="seg" id="seg{idx}" style="left:{lx:.1f}%;top:{ly:.1f}%;text-align:{text_align};">
-            <div class="seg-label" style="color:{seg['color']}">{seg['label']}</div>
-            <div class="seg-val">{seg['value']}</div>
-            <div class="seg-sub">{seg['sub']}</div>
-        </div>
-        """)
-
-        connector_items.append(f"""
-        <line x1="{dx:.1f}%" y1="{dy:.1f}%" x2="{lx:.1f}%" y2="{ly:.1f}%"
-              stroke="{seg['color']}" stroke-width="1" stroke-dasharray="3,4"
-              opacity="0.25" class="conn" />
-        <circle cx="{dx:.1f}%" cy="{dy:.1f}%" r="3" fill="{seg['color']}" opacity="0.5" class="cdot" />
-        """)
-
-        # Wheel arc segments
-        start_a = -90 + idx * angle_step
-        end_a = start_a + angle_step
-        r = 26
-        x1 = 50 + r * math.cos(math.radians(start_a))
-        y1 = 50 + r * math.sin(math.radians(start_a))
-        x2 = 50 + r * math.cos(math.radians(end_a))
-        y2 = 50 + r * math.sin(math.radians(end_a))
-        arc_items.append(
-            f'<path d="M 50,50 L {x1:.2f},{y1:.2f} A {r},{r} 0 0,1 {x2:.2f},{y2:.2f} Z"'
-            f' fill="{seg["color"]}" opacity="0.12" class="warc" />'
-        )
-
-
-
-    labels_html = "\n".join(label_items)
-    conns_html = "\n".join(connector_items)
-    arcs_html = "\n".join(arc_items)
-
-
-    # Persona SVG
-    if is_male:
-        persona_svg = f"""
-        <circle cx="50" cy="30" r="12" fill="{accent}"/>
-        <rect x="38" y="44" width="24" height="22" rx="5" fill="{accent}" opacity="0.85"/>
-        <rect x="34" y="66" width="14" height="20" rx="3" fill="{accent}" opacity="0.7"/>
-        <rect x="52" y="66" width="14" height="20" rx="3" fill="{accent}" opacity="0.7"/>
-        """
-    else:
-        persona_svg = f"""
-        <circle cx="50" cy="28" r="12" fill="{accent}"/>
-        <path d="M35,86 Q36,48 50,44 Q64,48 65,86 Z" fill="{accent}" opacity="0.85"/>
-        <ellipse cx="50" cy="54" rx="15" ry="10" fill="{accent}" opacity="0.75"/>
-        """
-
-    return f"""<!DOCTYPE html><html><head><style>
-*{{margin:0;padding:0;box-sizing:border-box}}
-body{{background:transparent;font-family:'Inter',-apple-system,sans-serif;color:#fff;overflow:hidden}}
-
-.wrap{{position:relative;width:100%;max-width:640px;margin:0 auto;aspect-ratio:1}}
-
-/* ── Wheel SVG ───────────────────── */
-.wsvg{{position:absolute;inset:0;width:100%;height:100%}}
-.warc{{transition:opacity .6s ease}}
-.conn{{transition:opacity .5s ease}}
-.cdot{{transition:opacity .5s ease,r .3s ease}}
-
-/* ── Center ──────────────────────── */
-.center{{
-    position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-    width:26%;aspect-ratio:1;border-radius:50%;
-    background:radial-gradient(circle,rgba(15,18,32,0.96),rgba(10,13,28,0.99));
-    border:2px solid {accent};
-    box-shadow:0 0 30px {accent_glow},0 0 60px {accent_glow},inset 0 0 30px rgba(0,0,0,0.5);
-    cursor:pointer;z-index:10;
-    display:flex;flex-direction:column;align-items:center;justify-content:center;
-    transition:transform .35s cubic-bezier(.4,0,.2,1),box-shadow .4s ease;
-}}
-.center:hover{{transform:translate(-50%,-50%) scale(1.07);
-    box-shadow:0 0 50px {accent_glow},0 0 100px {accent_glow},inset 0 0 30px rgba(0,0,0,0.5)}}
-.center svg{{width:55%;height:55%}}
-.hint{{font-size:8px;color:rgba(255,255,255,0.35);text-transform:uppercase;
-    letter-spacing:2px;margin-top:2px;transition:opacity .3s ease}}
-
-/* ── Segments ────────────────────── */
-.seg{{position:absolute;transform:translate(-50%,-50%);width:120px;z-index:5;
-    transition:all .4s cubic-bezier(.4,0,.2,1)}}
-.seg-label{{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:2px;
-    transition:all .3s ease}}
-.seg-val,.seg-sub{{opacity:0;max-height:0;overflow:hidden;
-    transform:translateY(8px);transition:all .45s cubic-bezier(.4,0,.2,1)}}
-.seg-val{{font-size:14px;font-weight:700;color:rgba(255,255,255,0.92);margin-top:3px}}
-.seg-sub{{font-size:10px;color:rgba(255,255,255,0.4);margin-top:1px}}
-
-
-
-/* ── Stats bar ───────────────────── */
-.sbar{{text-align:center;font-size:11px;color:rgba(255,255,255,0.35);
-    margin-top:12px;letter-spacing:.3px;transition:opacity .4s ease .5s;opacity:0}}
-.sbar b{{color:#FF9F43;font-weight:700}}
-
-/* ═══ Revealed state ═════════════ */
-.R .seg-val,.R .seg-sub{{opacity:1;max-height:60px;transform:translateY(0)}}
-.R .warc{{opacity:.3!important}}
-.R .conn{{opacity:.6!important}}
-.R .cdot{{opacity:.9!important}}
-.R .hint{{opacity:0}}
-
-.R .sbar{{opacity:1}}
-
-/* Stagger animation delays */
-.R #seg0 .seg-val,.R #seg0 .seg-sub{{transition-delay:.05s}}
-.R #seg1 .seg-val,.R #seg1 .seg-sub{{transition-delay:.12s}}
-.R #seg2 .seg-val,.R #seg2 .seg-sub{{transition-delay:.19s}}
-.R #seg3 .seg-val,.R #seg3 .seg-sub{{transition-delay:.26s}}
-.R #seg4 .seg-val,.R #seg4 .seg-sub{{transition-delay:.33s}}
-.R #seg5 .seg-val,.R #seg5 .seg-sub{{transition-delay:.40s}}
-.R #seg6 .seg-val,.R #seg6 .seg-sub{{transition-delay:.47s}}
-
-/* Glow pulse on revealed */
-@keyframes gp{{
-    0%,100%{{box-shadow:0 0 30px {accent_glow},0 0 60px {accent_glow},inset 0 0 30px rgba(0,0,0,.5)}}
-    50%{{box-shadow:0 0 50px {accent_glow},0 0 100px {accent_glow},inset 0 0 30px rgba(0,0,0,.5)}}
-}}
-.R .center{{animation:gp 3s ease-in-out infinite}}
-
-/* Outer ring pulse */
-@keyframes rp{{0%,100%{{opacity:.08}}50%{{opacity:.18}}}}
-.R .oring{{animation:rp 3s ease-in-out infinite}}
-</style></head><body>
-
-<div class="wrap" id="W">
-    <svg class="wsvg" viewBox="0 0 100 100">
-        {arcs_html}
-        {conns_html}
-        <circle cx="50" cy="50" r="26" fill="none" stroke="rgba(255,255,255,0.08)"
-                stroke-width=".4" class="oring"/>
-    </svg>
-    <div class="center" onclick="document.getElementById('W').classList.toggle('R')">
-        <svg viewBox="0 0 100 100">{persona_svg}</svg>
-        <div class="hint">{t('conclusion_wheel_click')}</div>
-    </div>
-    {labels_html}
-</div>
-
-<div class="sbar">
-    {t('conclusion_wheel_based_on', count=f'{high_count:,}', pct=high_pct)}
-</div>
-</body></html>"""
+    cols = st.columns(3, gap="medium")
+    for col, msg in zip(cols, messages):
+        icon_html = get_icon(msg["icon_key"], size=22, color=msg["color"])
+        with col:
+            st.markdown(
+                f'<div class="conclusion-msg-card {msg["css_class"]}">'
+                f'<div class="conclusion-msg-icon" style="background:{msg["bg"]};">'
+                f'{icon_html}'
+                f'</div>'
+                f'<div class="conclusion-msg-title">{t(msg["title_key"])}</div>'
+                f'<div class="conclusion-msg-body">{t(msg["body_key"])}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
 
 
 # ==============================================================================
@@ -396,14 +666,15 @@ def main() -> None:
         active_file, _file_mtime=data_engine._get_file_mtime(active_file)
     )
     active_file_scan_progress_bar("_conclusion_done")
+    st.markdown('<div style="height:20px;"></div>', unsafe_allow_html=True)
 
     if df_raw.empty:
         styled_alert(get_text('empty_state_msg', lang), "warning")
         return
 
     # ── Compute archetype ──────────────────────────────────────────────
-    cache_key = f"_conclusion_arch_v4_{active_file}"
-    size_key = f"_conclusion_size_v4_{active_file}"
+    cache_key = f"_conclusion_arch_v8_{active_file}"
+    size_key = f"_conclusion_size_v5_{active_file}"
     if (
         cache_key not in st.session_state
         or st.session_state.get(size_key) != len(df_raw)
@@ -418,31 +689,14 @@ def main() -> None:
         styled_alert(get_text('conclusion_no_income', lang), "warning")
         return
 
-    # ── Section header ─────────────────────────────────────────────────
-    gender_info = arch.get("gender", {})
-    is_male = gender_info.get("is_male", True)
+    # ── Section 1: Typical High-Income Profile ─────────────────────────
+    _render_profile_section(arch, lang)
 
-    icon_svg = get_icon("target", size=18, color=_AMBER)
-    st.markdown(
-        f"<div style='padding:14px 18px;margin-top:4px;margin-bottom:20px;"
-        f"background:linear-gradient(135deg,{_AMBER_DIM} 0%,rgba(255,159,67,0.02) 100%);"
-        f"border:1px solid {_AMBER_BORDER};border-left:3px solid rgba(255,159,67,0.70);"
-        f"border-radius:0 12px 12px 0;'>"
-        f"<div style='display:flex;align-items:center;gap:10px;'>"
-        f"{icon_svg}"
-        f"<span style='font-size:1.08rem;font-weight:800;color:rgba(255,255,255,0.92);"
-        f"letter-spacing:-0.3px;'>{get_text('conclusion_archetype_title', lang)}</span>"
-        f"</div>"
-        f"<div style='font-size:0.76rem;color:rgba(255,255,255,0.38);margin-top:4px;'>"
-        f"{get_text('conclusion_archetype_hint_long', lang)}"
-        f"</div>"
-        f"</div>",
-        unsafe_allow_html=True,
-    )
+    # ── Divider ────────────────────────────────────────────────────────
+    section_divider()
 
-    # ── Render persona wheel ───────────────────────────────────────────
-    html_content = _persona_wheel_html(arch, lang)
-    components.html(html_content, height=660, scrolling=False)
+    # ── Section 2: Key Message Delivery ────────────────────────────────
+    _render_messages_section(lang)
 
 
 if __name__ == "__main__":
