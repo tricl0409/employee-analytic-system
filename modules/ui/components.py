@@ -1,3 +1,4 @@
+import os
 import time
 import pandas as pd
 import streamlit as st
@@ -5,7 +6,7 @@ from modules.ui.icons import ICONS, get_icon
 from modules.core.file_manager import get_data_library, delete_data
 from modules.core.data_engine import load_and_standardize, _get_file_mtime, process_inventory, compute_dataset_metrics
 from modules.core import audit_engine
-from modules.core.audit_engine import generate_column_report
+
 from modules.ui import visualizer
 from modules.ui.dialogs import upload_dialog
 from modules.utils.localization import get_text
@@ -414,13 +415,12 @@ class UiComponents:
                 with m4: UiComponents.metric_card(get_text('duplicates', lang),   f"{metrics['duplicates']}",      glow="red"   if metrics['duplicates'] > 0  else "green")
                 with m5: UiComponents.metric_card(get_text('missing_data', lang), f"{metrics['missing_pct']:.1f}%", glow="red"  if metrics['missing_pct'] > 0 else "green")
                 st.markdown("<div style='margin-bottom: 24px;'></div>", unsafe_allow_html=True)
-                # Tabs — localized labels
-                tab1, tab2 = st.tabs([get_text('data_preview', lang), get_text('column_analysis', lang)])
+                tab1, tab2 = st.tabs([get_text('data_preview', lang), get_text('audit_tab_intro', lang)])
                 with tab1:
                     st.dataframe(df.head(10), use_container_width=True, height=350)
                 with tab2:
-                    report_df = generate_column_report(df)
-                    st.dataframe(report_df, use_container_width=True, height=350)
+                    st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
+                    UiComponents.dataset_introduction(df, lang)
                 st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
                 # Footer Action
                 _, c_close = st.columns([4, 1])
@@ -430,6 +430,184 @@ class UiComponents:
                         del st.session_state.preview_name
                         st.rerun()
                 st.markdown("</div>", unsafe_allow_html=True)
+
+    @staticmethod
+    def dataset_introduction(df: pd.DataFrame, lang: str) -> None:
+        """Render the Dataset Introduction table — static schema metadata for Adult Census."""
+        from modules.utils.db_config_manager import get_rule
+        
+        # --- Config Schema ---
+        schema = get_rule("employee_schema") or {"columns": []}
+        col_rules = {c["name"].lower(): c["dtype"] for c in schema.get("columns", [])}
+
+        # --- Header ---
+        accent = "#3B82F6"
+        h = accent.lstrip("#")
+        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+        rgb = f"{r},{g},{b}"
+        st.markdown(
+            f'<div style="margin-bottom:16px; margin-top:4px; padding:14px 18px;'
+            f' background:linear-gradient(135deg, rgba({rgb},0.08) 0%, rgba({rgb},0.02) 100%);'
+            f' border:1px solid rgba({rgb},0.12); border-left:3px solid {accent};'
+            f' border-radius:0 12px 12px 0;">'
+            f'<span style="font-size:1.05rem; font-weight:700;'
+            f' color:rgba(255,255,255,0.92); letter-spacing:-0.2px;">{get_text("audit_dataset_intro_title", lang)}</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f"<p style='font-size:0.85rem; color:rgba(255,255,255,0.4); margin-top:-8px; margin-bottom:12px;'>"
+            f"Reference table describing each <b style='color:rgba(255,255,255,0.65)'>attribute</b> in the dataset, "
+            f"grouped by <b style='color:rgba(255,255,255,0.65)'>domain category</b> with its data nature.</p>",
+            unsafe_allow_html=True,
+        )
+
+        # ── colour tokens ────────────────────────────────────────────────────
+        _GRP_COLORS = {
+            "demo":    "#60A5FA",   # Blue
+            "socio":   "#F59E0B",   # Amber
+            "employ":  "rgba(255,255,255,0.72)",  # Bright white
+            "finance": "#F87171",   # Red
+            "meta":    "#A78BFA",   # Purple
+            "target":  "#F97316",   # Orange
+        }
+
+        # ── table rows data ──────────────────────────────────────────────────
+        _ROWS = [
+            ("Personal Demographics",          _GRP_COLORS["demo"],  4, 1, "Age",            "Age of the individual (in years)",                              "Numeric"),
+            (None,                             None,                 0, 2, "Race",           "Ethnic or racial classification",                               "Categorical"),
+            (None,                             None,                 0, 3, "Sex",            "Biological sex of the individual",                              "Categorical"),
+            (None,                             None,                 0, 4, "Native_Country", "Country of origin or citizenship",                              "Categorical"),
+
+            ("Socioeconomic & Education",      _GRP_COLORS["socio"], 4, 5, "Education",      "Highest level of education attained",                           "Categorical"),
+            (None,                             None,                 0, 6, "Education_Num",  "Ordinal encoding of education level (1\u201316)",                    "Categorical"),
+            (None,                             None,                 0, 7, "Marital_Status", "Current marital status classification",                         "Categorical"),
+            (None,                             None,                 0, 8, "Relationship",   "Role within the household or family unit",                      "Categorical"),
+
+            ("Employment & Occupation",        _GRP_COLORS["employ"],3, 9, "Workclass",      "Employment sector (Private, Government, Self-employed, etc.)",  "Categorical"),
+            (None,                             None,                 0,10, "Occupation",     "Professional occupation or job classification",                 "Categorical"),
+            (None,                             None,                 0,11, "Hours_per_Week", "Average weekly working hours",                                  "Numeric"),
+
+            ("Financial Indicators",           _GRP_COLORS["finance"],2,12,"Capital_Gain",   "Capital gains from investment or asset sales",                  "Numeric"),
+            (None,                             None,                 0,13, "Capital_Loss",   "Capital losses from investment or asset sales",                 "Numeric"),
+
+            ("Sampling & Technical Metadata",  _GRP_COLORS["meta"],1,14,"Fnlwgt",       "Final sampling weight assigned by the Census Bureau",           "Numeric"),
+
+            ("Target Variable",                _GRP_COLORS["target"],1,15, "Income",         "Annual income bracket (\u226450K / >50K)",                           "Categorical"),
+        ]
+
+        # ── build HTML rows ──────────────────────────────────────────────────
+        rows_html = ""
+        is_target_row = False
+        for group_label, group_color, rowspan, no, attr, meaning, nature_html in _ROWS:
+            group_td = ""
+            if group_label is not None:
+                is_target_row = group_label == "Target Variable"
+                group_td = (
+                    f"<td rowspan='{rowspan}' style='"
+                    f"font-weight:700; font-size:0.82rem; color:{group_color};"
+                    f" padding:12px 14px; vertical-align:middle;"
+                    f" border-bottom:1px solid rgba(255,255,255,0.06);"
+                    f" border-right:1px solid rgba(255,255,255,0.06);"
+                    f" white-space:nowrap;"
+                    f"'>{group_label}</td>"
+                )
+
+            # --- Dynamic Dtype and Samples ---
+            dtype_html = "<span style='color:rgba(255,255,255,0.3)'>N/A</span>"
+            sample_html = "<span style='color:rgba(255,255,255,0.3)'>N/A</span>"
+            
+            if attr is not None:
+                expected_dtype = col_rules.get(attr.lower(), "object")
+                dtype_html = f"<span style='font-family:monospace; color:#A78BFA; font-size:0.80rem;'>{expected_dtype}</span>"
+
+                matched_cols = [c for c in df.columns if c.lower() == attr.lower()]
+                if matched_cols:
+                    real_col = matched_cols[0]
+                    valid_vals = df[real_col].dropna()
+                    if len(valid_vals) > 0:
+                        samples = valid_vals.unique()[:3]
+                        try:
+                            # Cast the samples to the config-defined dtype
+                            casted_samples = pd.Series(samples).astype(expected_dtype)
+                            sample_list = [str(x) for x in casted_samples]
+                        except Exception:
+                            # Fallback if casting fails
+                            sample_list = [str(x) for x in samples]
+                        
+                        sample_str = ", ".join(sample_list)
+                        if len(valid_vals.unique()) > 3:
+                            sample_str += ", ..."
+                    else:
+                        sample_str = "All NaN"
+                    
+                    sample_html = f"<span style='font-family:monospace; color:rgba(255,255,255,0.45); font-size:0.75rem;'>{sample_str}</span>"
+
+            row_bg = " background:rgba(249,115,22,0.08);" if is_target_row else ""
+            rows_html += (
+                f"<tr style='border-bottom:1px solid rgba(255,255,255,0.06);{row_bg}'>"
+                f"{group_td}"
+                f"<td style='text-align:center; color:rgba(255,255,255,0.4); padding:10px 8px;"
+                f" font-size:0.80rem; border-right:1px solid rgba(255,255,255,0.06);'>{no}</td>"
+                f"<td style='font-weight:600; color:rgba(255,255,255,0.82); padding:10px 14px;"
+                f" font-size:0.82rem; border-right:1px solid rgba(255,255,255,0.06);'>{attr}</td>"
+                f"<td style='color:rgba(255,255,255,0.55); padding:10px 14px;"
+                f" font-size:0.80rem; border-right:1px solid rgba(255,255,255,0.06);'>{meaning}</td>"
+                f"<td style='text-align:left; padding:10px 14px;"
+                f" font-size:0.80rem; color:rgba(255,255,255,0.55); border-right:1px solid rgba(255,255,255,0.06);'>{nature_html}</td>"
+                f"<td style='text-align:left; padding:10px 14px; border-right:1px solid rgba(255,255,255,0.06);'>{dtype_html}</td>"
+                f"<td style='text-align:left; padding:10px 14px;'>{sample_html}</td>"
+                f"</tr>"
+            )
+
+        # ── full table ───────────────────────────────────────────────────────
+        table_html = (
+            "<div style='"
+            "background:rgba(255,255,255,0.02);"
+            "border:1px solid rgba(255,255,255,0.06);"
+            "border-radius:16px;"
+            "overflow:hidden;"
+            "backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);"
+            "margin-bottom:16px;"
+            "'>"
+            "<table style='width:100%; border-collapse:collapse; table-layout:auto;'>"
+            "<thead>"
+            "<tr style='background:rgba(255,255,255,0.04); border-bottom:1px solid rgba(255,255,255,0.08);'>"
+            "<th style='text-align:left; padding:12px 14px; font-size:0.75rem;"
+            " font-weight:700; color:rgba(255,255,255,0.5);"
+            " text-transform:uppercase; letter-spacing:1px; width:16%;"
+            " border-right:1px solid rgba(255,255,255,0.06);'>Attribute Group</th>"
+            "<th style='text-align:center; padding:12px 8px; font-size:0.75rem;"
+            " font-weight:700; color:rgba(255,255,255,0.5);"
+            " text-transform:uppercase; letter-spacing:1px; width:4%;"
+            " border-right:1px solid rgba(255,255,255,0.06);'>No</th>"
+            "<th style='text-align:left; padding:12px 14px; font-size:0.75rem;"
+            " font-weight:700; color:rgba(255,255,255,0.5);"
+            " text-transform:uppercase; letter-spacing:1px; width:12%;"
+            " border-right:1px solid rgba(255,255,255,0.06);'>Attribute</th>"
+            "<th style='text-align:left; padding:12px 14px; font-size:0.75rem;"
+            " font-weight:700; color:rgba(255,255,255,0.5);"
+            " text-transform:uppercase; letter-spacing:1px; width:22%;"
+            " border-right:1px solid rgba(255,255,255,0.06);'>Meaning</th>"
+            "<th style='text-align:left; padding:12px 14px; font-size:0.75rem;"
+            " font-weight:700; color:rgba(255,255,255,0.5);"
+            " text-transform:uppercase; letter-spacing:1px; width:12%;"
+            " border-right:1px solid rgba(255,255,255,0.06);'>Nature</th>"
+            "<th style='text-align:left; padding:12px 14px; font-size:0.75rem;"
+            " font-weight:700; color:rgba(255,255,255,0.5);"
+            " text-transform:uppercase; letter-spacing:1px; width:10%;"
+            " border-right:1px solid rgba(255,255,255,0.06);'>Dtype</th>"
+            "<th style='text-align:left; padding:12px 14px; font-size:0.75rem;"
+            " font-weight:700; color:rgba(255,255,255,0.5);"
+            " text-transform:uppercase; letter-spacing:1px; width:24%;'>Samples</th>"
+            "</tr>"
+            "</thead>"
+            f"<tbody>{rows_html}</tbody>"
+            "</table>"
+            "</div>"
+        )
+        st.markdown(table_html, unsafe_allow_html=True)
+        UiComponents.section_divider()
     @staticmethod
     def feature_navigation(num_records, lang):
         """
@@ -510,8 +688,60 @@ class UiComponents:
         icon_users = get_icon("users", size=22)
         icon_heart = get_icon("heart", size=22)
         icon_home = get_icon("home", size=22)
+        # -- Load objective image as base64 --
+        import base64
+        _obj_img_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets", "key_objectives.jpg")
+        try:
+            with open(_obj_img_path, "rb") as _img_f:
+                obj_img_b64 = base64.b64encode(_img_f.read()).decode()
+        except Exception:
+            obj_img_b64 = ""
         html = f"""
 <div id='module-selection-anchor'></div>
+<div class="section-title">{t('overview_col_objectives')}</div>
+<div class="section-divider"></div>
+<div class="obj-split-layout">
+    <div class="obj-split-image">
+        <img src="data:image/jpeg;base64,{obj_img_b64}" alt="Key Objectives" />
+    </div>
+    <div class="obj-split-cards">
+        <div class="obj-card-premium obj-card-bg-1">
+            <div class="obj-icon-wrap">{icon_bar_chart}</div>
+            <div class="obj-content">
+                <div class="obj-title">{t('overview_obj_grp1_1_title')}</div>
+                <div class="obj-desc">{t('overview_obj_grp1_1_desc')}</div>
+            </div>
+        </div>
+        <div class="obj-card-premium obj-card-bg-2">
+            <div class="obj-icon-wrap">{icon_zap}</div>
+            <div class="obj-content">
+                <div class="obj-title">{t('overview_obj_grp1_2_title')}</div>
+                <div class="obj-desc">{t('overview_obj_grp1_2_desc')}</div>
+            </div>
+        </div>
+        <div class="obj-card-premium obj-card-bg-3">
+            <div class="obj-icon-wrap">{icon_clock}</div>
+            <div class="obj-content">
+                <div class="obj-title">{t('overview_obj_grp1_3_title')}</div>
+                <div class="obj-desc">{t('overview_obj_grp1_3_desc')}</div>
+            </div>
+        </div>
+        <div class="obj-card-premium obj-card-bg-4">
+            <div class="obj-icon-wrap">{icon_heart_pulse}</div>
+            <div class="obj-content">
+                <div class="obj-title">{t('overview_obj_grp1_4_title')}</div>
+                <div class="obj-desc">{t('overview_obj_grp1_4_desc')}</div>
+            </div>
+        </div>
+        <div class="obj-card-premium obj-card-bg-5">
+            <div class="obj-icon-wrap">{icon_briefcase}</div>
+            <div class="obj-content">
+                <div class="obj-title">{t('overview_obj_grp1_5_title')}</div>
+                <div class="obj-desc">{t('overview_obj_grp1_5_desc')}</div>
+            </div>
+        </div>
+    </div>
+</div>
 <div class="section-title">{t('overview_section_journey')}</div>
 <div class="section-divider"></div>
 <div class="journey-grid">
@@ -541,99 +771,6 @@ class UiComponents:
         <div class="journey-label label-3">STEP 3</div>
         <div class="journey-title">{t('overview_journey_eda_title')}</div>
         <div class="journey-desc">{t('overview_journey_eda_desc')}</div>
-    </div>
-</div>
-<div class="two-columns">
-    <!-- Left Column: Research Objectives -->
-    <div class="column-wrapper">
-        <div class="header-row">
-            <div class="col-title">{t('overview_col_objectives')}</div>
-        </div>
-        <div class="column-boxes">
-            <div class="obj-card-premium obj-card-bg-1">
-                <div class="obj-icon-wrap">{icon_bar_chart}</div>
-                <div class="obj-content">
-                    <div class="obj-title">{t('overview_obj_grp1_1_title')}</div>
-                    <div class="obj-desc">{t('overview_obj_grp1_1_desc')}</div>
-                </div>
-            </div>
-            <div class="obj-card-premium obj-card-bg-2">
-                <div class="obj-icon-wrap">{icon_zap}</div>
-                <div class="obj-content">
-                    <div class="obj-title">{t('overview_obj_grp1_2_title')}</div>
-                    <div class="obj-desc">{t('overview_obj_grp1_2_desc')}</div>
-                </div>
-            </div>
-            <div class="obj-card-premium obj-card-bg-3">
-                <div class="obj-icon-wrap">{icon_clock}</div>
-                <div class="obj-content">
-                    <div class="obj-title">{t('overview_obj_grp1_3_title')}</div>
-                    <div class="obj-desc">{t('overview_obj_grp1_3_desc')}</div>
-                </div>
-            </div>
-            <div class="obj-card-premium obj-card-bg-4">
-                <div class="obj-icon-wrap">{icon_heart_pulse}</div>
-                <div class="obj-content">
-                    <div class="obj-title">{t('overview_obj_grp1_4_title')}</div>
-                    <div class="obj-desc">{t('overview_obj_grp1_4_desc')}</div>
-                </div>
-            </div>
-            <div class="obj-card-premium obj-card-bg-5">
-                <div class="obj-icon-wrap">{icon_briefcase}</div>
-                <div class="obj-content">
-                    <div class="obj-title">{t('overview_obj_grp1_5_title')}</div>
-                    <div class="obj-desc">{t('overview_obj_grp1_5_desc')}</div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <!-- Right Column: Data Anatomy -->
-    <div class="column-wrapper">
-        <div class="header-row">
-            <div class="col-title">{t('overview_col_anatomy')}</div>
-            <div class="records-badge">{num_records} {t('overview_records_suffix')}</div>
-        </div>
-        <div class="column-boxes">
-            <div class="anatomy-box">
-                <div class="anatomy-title">{t('overview_anatomy_quant_title')}</div>
-                <div class="anatomy-tags">{quant_tags}</div>
-                <div class="anatomy-note">{t('overview_anatomy_quant_note')}</div>
-            </div>
-            <div class="anatomy-box anatomy-box-amber">
-                <div class="anatomy-title anatomy-title-amber" style="margin-bottom: 12px;">{t('overview_anatomy_cat_title')}</div>
-                <div style="margin-bottom: 12px;">
-                    <div style="color: var(--text-secondary); font-size: 0.8rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
-                        <span style="color: var(--accent-orange);">-</span> {t('overview_anatomy_cat_prof_label')}
-                    </div>
-                    <div class="anatomy-tags" style="padding-left: 14px;">{cat_prof_tags}</div>
-                </div>
-                <div style="margin-bottom: 12px;">
-                    <div style="color: var(--text-secondary); font-size: 0.8rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
-                        <span style="color: var(--accent-orange);">-</span> {t('overview_anatomy_cat_demo_label')}
-                    </div>
-                    <div class="anatomy-tags" style="padding-left: 14px;">{cat_demo_tags}</div>
-                </div>
-                <div>
-                    <div style="color: var(--text-secondary); font-size: 0.8rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
-                        <span style="color: var(--accent-orange);">-</span> {t('overview_anatomy_cat_fam_label')}
-                    </div>
-                    <div class="anatomy-tags" style="padding-left: 14px;">{cat_fam_tags}</div>
-                </div>
-            </div>
-            <div class="anatomy-box anatomy-box-amber">
-                <div class="anatomy-title anatomy-title-amber">{t('overview_anatomy_fin_title')}</div>
-                <div class="anatomy-tags">{fin_tags}</div>
-                <div class="anatomy-note">{t('overview_anatomy_fin_note')}</div>
-            </div>
-            <div class="anatomy-box anatomy-box-red">
-                <div class="anatomy-title anatomy-title-red">{t('overview_anatomy_target_title')}</div>
-                <div style="display: flex; align-items: center; gap: 12px; margin-top: 8px;">
-                    <span style="color: white; font-weight: bold; font-size: 0.95rem;">{t('overview_anatomy_target_label')}</span>
-                    {target_tags}
-                </div>
-            </div>
-
-        </div>
     </div>
 </div>
 """

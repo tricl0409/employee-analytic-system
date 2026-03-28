@@ -246,8 +246,28 @@ def _build_profile_html(arch: dict, img_b64: str, lang: str) -> str:
     high_count = arch.get("high_count", 0)
     high_pct = arch.get("high_pct", 0)
 
-    # Build trait items with stat bars
+    # Build trait items with stat bars — grouped logically
     traits = []
+
+    # ── Group 1: Demographics ──
+    if gender:
+        traits.append({
+            "label": t("conclusion_trait_gender"),
+            "value": gender.get("label", "—"),
+            "pct": gender.get("pct", 0),
+            "color": "#FF9F43",
+        })
+    if age:
+        prime_pct = age.get("prime_pct", 0)
+        traits.append({
+            "label": t("conclusion_trait_age"),
+            "value": f'{t("conclusion_trait_age_range_label", q1=age.get("q1", "—"), q3=age.get("q3", "—"))}'
+                     f' · {prime_pct}% in prime (36\u201365)',
+            "pct": prime_pct,
+            "color": "#3B82F6",
+        })
+
+    # ── Group 2: Personal / Family ──
     if marital:
         traits.append({
             "label": t("conclusion_trait_marital"),
@@ -262,6 +282,8 @@ def _build_profile_html(arch: dict, img_b64: str, lang: str) -> str:
             "pct": relationship.get("pct", 0),
             "color": "#14B8A6",
         })
+
+    # ── Group 3: Professional ──
     if edu:
         edu_value = edu.get("label", "—")
         edu_detail = edu.get("detail", "")
@@ -280,13 +302,8 @@ def _build_profile_html(arch: dict, img_b64: str, lang: str) -> str:
             "pct": occ.get("pct", 0),
             "color": "#F59E0B",
         })
-    if capital:
-        traits.append({
-            "label": t("conclusion_trait_capital"),
-            "value": f'{capital.get("pct", 0)}% {t("conclusion_trait_invest_label")}',
-            "pct": capital.get("pct", 0),
-            "color": "#6366F1",
-        })
+
+    # ── Group 4: Work & Financial ──
     if hours:
         traits.append({
             "label": t("conclusion_trait_hours"),
@@ -295,21 +312,12 @@ def _build_profile_html(arch: dict, img_b64: str, lang: str) -> str:
             "pct": min(hours.get("pct_fulltime", 0), 100),
             "color": "#EC4899",
         })
-    if age:
-        prime_pct = age.get("prime_pct", 0)
+    if capital:
         traits.append({
-            "label": t("conclusion_trait_age"),
-            "value": f'{t("conclusion_trait_age_range_label", q1=age.get("q1", "—"), q3=age.get("q3", "—"))}'
-                     f' · {prime_pct}% in prime (36\u201365)',
-            "pct": prime_pct,
-            "color": "#3B82F6",
-        })
-    if gender:
-        traits.append({
-            "label": t("conclusion_trait_gender"),
-            "value": gender.get("label", "—"),
-            "pct": gender.get("pct", 0),
-            "color": "#FF9F43",
+            "label": t("conclusion_trait_capital"),
+            "value": f'{capital.get("pct", 0)}% {t("conclusion_trait_invest_label")}',
+            "pct": capital.get("pct", 0),
+            "color": "#6366F1",
         })
 
     # Build trait HTML rows with animated stat bars
@@ -579,8 +587,8 @@ def _render_profile_section(arch: dict, lang: str) -> None:
 # SECTION 2 — KEY MESSAGE DELIVERY
 # ==============================================================================
 
-def _render_messages_section(lang: str) -> None:
-    """Render the 3 Key Message insight cards."""
+def _render_messages_section(arch: dict, lang: str) -> None:
+    """Render the 3 Key Message insight cards with data-driven stats."""
     t = lambda key, **kw: get_text(key, lang, **kw)
 
     # Section header — amber accent (consistent with profile section)
@@ -602,48 +610,113 @@ def _render_messages_section(lang: str) -> None:
         unsafe_allow_html=True,
     )
 
-    # Message card data — all amber accent for page-level consistency
+    # ── Extract real stats from archetype ──────────────────────────────
+    edu = arch.get("education", {})
+    edu_pct = edu.get("pct", 0)
+    edu_label = edu.get("label", "Higher Education")
+
+    hours = arch.get("hours", {})
+    hours_avg = hours.get("avg", 0)
+    hours_ft_pct = hours.get("pct_fulltime", 0)
+
+    age = arch.get("age", {})
+    age_q1 = age.get("q1", 36)
+    age_q3 = age.get("q3", 55)
+    age_prime_pct = age.get("prime_pct", 0)
+
+    occ = arch.get("occupation", {})
+    occ_label = occ.get("label", "—")
+    occ_pct = occ.get("pct", 0)
+
+    # ── Stat pill helper ──────────────────────────────────────────────
+    def _stat_pill(value: str, color: str) -> str:
+        return (
+            f"<b style='color:{color};font-weight:800;'>{value}</b>"
+        )
+
+    # ── Build data-enriched message bodies ─────────────────────────────
+    msg1_body = (
+        f"Among high-income earners, {_stat_pill(f'{edu_pct}%', '#10B981')} hold "
+        f"<b style='color:rgba(255,255,255,0.85);'>{edu_label}</b>. "
+        f"Higher education consistently correlates with better jobs, stronger income, "
+        f"and wider career choices."
+    )
+
+    msg2_body = (
+        f"High earners work an average of {_stat_pill(f'{hours_avg}h/week', '#EC4899')}, "
+        f"with {_stat_pill(f'{hours_ft_pct}%', '#EC4899')} working full-time (≥40h). "
+        f"Yet {_stat_pill(f'{occ_pct}%', '#F59E0B')} concentrate in "
+        f"<b style='color:rgba(255,255,255,0.85);'>{occ_label}</b> — "
+        f"proving <b style='color:rgba(255,255,255,0.85);'>what</b> you work on matters more than "
+        f"<b style='color:rgba(255,255,255,0.85);'>how long</b>."
+    )
+
+    msg3_body = (
+        f"The prime earning window is {_stat_pill(f'{age_q1}–{age_q3} years', '#3B82F6')}, "
+        f"with {_stat_pill(f'{age_prime_pct}%', '#3B82F6')} of top earners in this range. "
+        f"Start building your <b style='color:rgba(255,255,255,0.85);'>education</b> and "
+        f"<b style='color:rgba(255,255,255,0.85);'>career path</b> early to thrive when it counts."
+    )
+
+    # ── Card definitions ───────────────────────────────────────────────
     messages = [
         {
-            "title_key": "conclusion_msg1_title",
-            "body_key": "conclusion_msg1_body",
+            "title": t("conclusion_msg1_title"),
+            "body": msg1_body,
             "icon_key": "graduation_cap",
-            "color": _AMBER,
-            "bg": _AMBER_DIM,
-            "css_class": "conclusion-msg-amber",
+            "accent": "#10B981",
         },
         {
-            "title_key": "conclusion_msg2_title",
-            "body_key": "conclusion_msg2_body",
+            "title": t("conclusion_msg2_title"),
+            "body": msg2_body,
             "icon_key": "lightbulb",
-            "color": _AMBER,
-            "bg": _AMBER_DIM,
-            "css_class": "conclusion-msg-amber",
+            "accent": "#F59E0B",
         },
         {
-            "title_key": "conclusion_msg3_title",
-            "body_key": "conclusion_msg3_body",
+            "title": t("conclusion_msg3_title"),
+            "body": msg3_body,
             "icon_key": "trending_up",
-            "color": _AMBER,
-            "bg": _AMBER_DIM,
-            "css_class": "conclusion-msg-amber",
+            "accent": "#3B82F6",
         },
     ]
 
+    # ── Render cards ───────────────────────────────────────────────────
     cols = st.columns(3, gap="medium")
     for col, msg in zip(cols, messages):
-        icon_html = get_icon(msg["icon_key"], size=22, color=msg["color"])
+        accent = msg["accent"]
+        rgb = _hex_to_rgb(accent)
+        icon_html = get_icon(msg["icon_key"], size=24, color=accent)
         with col:
             st.markdown(
-                f'<div class="conclusion-msg-card {msg["css_class"]}">'
-                f'<div class="conclusion-msg-icon" style="background:{msg["bg"]};">'
-                f'{icon_html}'
-                f'</div>'
-                f'<div class="conclusion-msg-title">{t(msg["title_key"])}</div>'
-                f'<div class="conclusion-msg-body">{t(msg["body_key"])}</div>'
-                f'</div>',
+                f"<div style='"
+                f"padding:24px 20px;border-radius:16px;"
+                f"background:linear-gradient(160deg, rgba({rgb},0.10) 0%, rgba(255,255,255,0.02) 100%);"
+                f"border:1px solid rgba({rgb},0.18);"
+                f"border-top:3px solid {accent};"
+                f"box-shadow:0 8px 32px rgba(0,0,0,0.25), 0 0 20px rgba({rgb},0.06);"
+                f"transition:all 0.3s cubic-bezier(0.4,0,0.2,1);"
+                f"min-height:280px;"
+                f"'>"
+                # Icon
+                f"<div style='width:44px;height:44px;border-radius:12px;"
+                f"background:rgba({rgb},0.15);border:1px solid rgba({rgb},0.25);"
+                f"display:flex;align-items:center;justify-content:center;"
+                f"margin-bottom:16px;'>{icon_html}</div>"
+                # Title
+                f"<div style='font-size:1.05rem;font-weight:800;color:rgba(255,255,255,0.92);"
+                f"margin-bottom:12px;letter-spacing:-0.3px;'>{msg['title']}</div>"
+                # Body with stats
+                f"<div style='font-size:0.85rem;color:rgba(255,255,255,0.50);"
+                f"line-height:1.75;'>{msg['body']}</div>"
+                f"</div>",
                 unsafe_allow_html=True,
             )
+
+
+def _hex_to_rgb(hex_color: str) -> str:
+    """Convert hex color to 'r,g,b' string for rgba() usage."""
+    h = hex_color.lstrip("#")
+    return f"{int(h[0:2], 16)},{int(h[2:4], 16)},{int(h[4:6], 16)}"
 
 
 # ==============================================================================
@@ -696,7 +769,7 @@ def main() -> None:
     section_divider()
 
     # ── Section 2: Key Message Delivery ────────────────────────────────
-    _render_messages_section(lang)
+    _render_messages_section(arch, lang)
 
 
 if __name__ == "__main__":

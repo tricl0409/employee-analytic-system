@@ -236,7 +236,7 @@ STRINGS = {
         "hint_iqr": "Q1 − 1.5·IQR … Q3 + 1.5·IQR — Robust, non-parametric",
         "hint_zscore": "Mean ± 3·Std — Best for normally distributed data",
         "hint_modified_zscore": "Median ± 3·MAD — Robust against skewed data",
-        "data_preview": "Data Preview",
+        "data_preview": ":material/visibility: Data Preview",
         "column_analysis": "Column Analysis",
         "loading": "Loading...",
         "smart_recommendation": "Smart Recommendation",

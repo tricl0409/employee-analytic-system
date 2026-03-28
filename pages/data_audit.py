@@ -114,127 +114,7 @@ def _glass_card(content_html: str) -> None:
     )
 
 
-def _render_dataset_introduction(lang: str) -> None:
-    """Render the Dataset Introduction table — static schema metadata for Adult Census."""
-    _styled_header(get_text('audit_dataset_intro_title', lang))
-    _section_subtitle(
-        "Reference table describing each "
-        "<b style='color:rgba(255,255,255,0.65)'>attribute</b> in the dataset, "
-        "grouped by "
-        "<b style='color:rgba(255,255,255,0.65)'>domain category</b> "
-        "with its data nature."
-    )
 
-    # ── colour tokens ────────────────────────────────────────────────────
-    _GRP_COLORS = {
-        "demo":    "#60A5FA",   # Blue
-        "socio":   "#F59E0B",   # Amber
-        "employ":  "rgba(255,255,255,0.72)",  # Bright white
-        "finance": "#F87171",   # Red
-        "meta":    "#A78BFA",   # Purple
-        "target":  "#F97316",   # Orange
-    }
-
-
-    # ── table rows data ──────────────────────────────────────────────────
-    # (group_label, group_color, rowspan, no, attr, meaning, nature_html)
-    _ROWS = [
-        ("Personal Demographics",          _GRP_COLORS["demo"],  4, 1, "Age",            "Age of the individual (in years)",                              "Quantitative Variables"),
-        (None,                             None,                 0, 2, "Race",           "Ethnic or racial classification",                               "Categorical Variables"),
-        (None,                             None,                 0, 3, "Sex",            "Biological sex of the individual",                              "Categorical Variables"),
-        (None,                             None,                 0, 4, "Native_Country", "Country of origin or citizenship",                              "Categorical Variables"),
-
-        ("Socioeconomic & Education",      _GRP_COLORS["socio"], 4, 5, "Education",      "Highest level of education attained",                           "Categorical Variables"),
-        (None,                             None,                 0, 6, "Education_Num",  "Ordinal encoding of education level (1\u201316)",                    "Categorical Variables"),
-        (None,                             None,                 0, 7, "Marital_Status", "Current marital status classification",                         "Categorical Variables"),
-        (None,                             None,                 0, 8, "Relationship",   "Role within the household or family unit",                      "Categorical Variables"),
-
-        ("Employment & Occupation",        _GRP_COLORS["employ"],3, 9, "Workclass",      "Employment sector (Private, Government, Self-employed, etc.)",  "Categorical Variables"),
-        (None,                             None,                 0,10, "Occupation",     "Professional occupation or job classification",                 "Categorical Variables"),
-        (None,                             None,                 0,11, "Hours_per_Week", "Average weekly working hours",                                  "Quantitative Variables"),
-
-        ("Financial Indicators",           _GRP_COLORS["finance"],2,12,"Capital_Gain",   "Capital gains from investment or asset sales",                  "Financial Variables"),
-        (None,                             None,                 0,13, "Capital_Loss",   "Capital losses from investment or asset sales",                 "Financial Variables"),
-
-        ("Sampling & Technical Metadata",  _GRP_COLORS["meta"],1,14,"Fnlwgt",       "Final sampling weight assigned by the Census Bureau",           "Quantitative Variables"),
-
-        ("Target Variable",                _GRP_COLORS["target"],1,15, "Income",         "Annual income bracket (\u226450K / >50K)",                           "Binary categorical label"),
-    ]
-
-    # ── build HTML rows ──────────────────────────────────────────────────
-    rows_html = ""
-    is_target_row = False
-    for group_label, group_color, rowspan, no, attr, meaning, nature_html in _ROWS:
-        group_td = ""
-        if group_label is not None:
-            is_target_row = group_label == "Target Variable"
-            group_td = (
-                f"<td rowspan='{rowspan}' style='"
-                f"font-weight:700; font-size:0.82rem; color:{group_color};"
-                f" padding:12px 14px; vertical-align:middle;"
-                f" border-bottom:1px solid rgba(255,255,255,0.06);"
-                f" border-right:1px solid rgba(255,255,255,0.06);"
-                f" white-space:nowrap;"
-                f"'>{group_label}</td>"
-            )
-
-        # Highlight target variable row with subtle accent background
-        row_bg = " background:rgba(249,115,22,0.08);" if is_target_row else ""
-        rows_html += (
-            f"<tr style='border-bottom:1px solid rgba(255,255,255,0.06);{row_bg}'>"
-            f"{group_td}"
-            f"<td style='text-align:center; color:rgba(255,255,255,0.4); padding:10px 8px;"
-            f" font-size:0.80rem; border-right:1px solid rgba(255,255,255,0.06);'>{no}</td>"
-            f"<td style='font-weight:600; color:rgba(255,255,255,0.82); padding:10px 14px;"
-            f" font-size:0.82rem; border-right:1px solid rgba(255,255,255,0.06);'>{attr}</td>"
-            f"<td style='color:rgba(255,255,255,0.55); padding:10px 14px;"
-            f" font-size:0.80rem; border-right:1px solid rgba(255,255,255,0.06);'>{meaning}</td>"
-            f"<td style='text-align:left; padding:10px 14px;"
-            f" font-size:0.80rem; color:rgba(255,255,255,0.55);'>{nature_html}</td>"
-            f"</tr>"
-        )
-
-    # ── full table ───────────────────────────────────────────────────────
-    table_html = (
-        "<div style='"
-        "background:rgba(255,255,255,0.02);"
-        "border:1px solid rgba(255,255,255,0.06);"
-        "border-radius:16px;"
-        "overflow:hidden;"
-        "backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);"
-        "margin-bottom:16px;"
-        "'>"
-        "<table style='width:100%; border-collapse:collapse; table-layout:auto;'>"
-        "<thead>"
-        "<tr style='background:rgba(255,255,255,0.04); border-bottom:1px solid rgba(255,255,255,0.08);'>"
-        "<th style='text-align:left; padding:12px 14px; font-size:0.75rem;"
-        " font-weight:700; color:rgba(255,255,255,0.5);"
-        " text-transform:uppercase; letter-spacing:1px; width:20%;"
-        " border-right:1px solid rgba(255,255,255,0.06);'>Attribute Group</th>"
-        "<th style='text-align:center; padding:12px 8px; font-size:0.75rem;"
-        " font-weight:700; color:rgba(255,255,255,0.5);"
-        " text-transform:uppercase; letter-spacing:1px; width:5%;"
-        " border-right:1px solid rgba(255,255,255,0.06);'>No</th>"
-        "<th style='text-align:left; padding:12px 14px; font-size:0.75rem;"
-        " font-weight:700; color:rgba(255,255,255,0.5);"
-        " text-transform:uppercase; letter-spacing:1px; width:16%;"
-        " border-right:1px solid rgba(255,255,255,0.06);'>Attribute</th>"
-        "<th style='text-align:left; padding:12px 14px; font-size:0.75rem;"
-        " font-weight:700; color:rgba(255,255,255,0.5);"
-        " text-transform:uppercase; letter-spacing:1px; width:36%;"
-        " border-right:1px solid rgba(255,255,255,0.06);'>Meaning</th>"
-        "<th style='text-align:left; padding:12px 14px; font-size:0.75rem;"
-        " font-weight:700; color:rgba(255,255,255,0.5);"
-        " text-transform:uppercase; letter-spacing:1px; width:23%;'>Nature Variables</th>"
-        "</tr>"
-        "</thead>"
-        f"<tbody>{rows_html}</tbody>"
-        "</table>"
-        "</div>"
-    )
-
-    st.markdown(table_html, unsafe_allow_html=True)
-    section_divider()
 
 
 
@@ -846,15 +726,12 @@ def main():
     # --- KEY ISSUES IDENTIFIED (standalone section) ---
     _render_key_issues_summary(audit, lang)
 
-    # --- 4-TAB LAYOUT ---
-    tab_intro, tab1, tab2, tab3 = st.tabs([
-        get_text('audit_tab_intro', lang),
+    # --- 3-TAB LAYOUT ---
+    tab1, tab2, tab3 = st.tabs([
         get_text('audit_tab_quality', lang),
-        get_text('audit_tab_charts', lang),       # Swapped tab2 (Charts)
-        get_text('audit_tab_profiling', lang),    # Swapped tab3 (Profiling)
+        get_text('audit_tab_charts', lang),
+        get_text('audit_tab_profiling', lang),
     ])
-    with tab_intro:
-        _render_dataset_introduction(lang)
     with tab1:
         _render_issue_composition(audit, lang)
         _render_missing_values(audit, df, lang)

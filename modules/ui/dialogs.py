@@ -36,57 +36,60 @@ def upload_dialog():
     up_file = st.file_uploader("CSV", type="csv", label_visibility="collapsed")
 
     if up_file:
-        if st.button(f":material/upload: {get_text('upload_file', lang)}", use_container_width=True, type="primary"):
-            # 1. Validate Duplicate Filename
-            file_path = os.path.join(UPLOADS_DIR, up_file.name)
-            if os.path.exists(file_path):
-                st.markdown(
-                    _alert_html(f"File '<b>{up_file.name}</b>' already exists. Please rename or delete the existing file.", kind="warning"),
-                    unsafe_allow_html=True,
-                )
-                return
+        can_upload = True
+        
+        # 1. Schema Validation (pre-check immediately after selection)
+        try:
+            up_file.seek(0)
+            df = pd.read_csv(up_file)
+            df.columns = df.columns.str.strip()
+            sv = validate_schema(df, lang)
 
-            # 2. Schema Validation
-            try:
-                up_file.seek(0)
-                df = pd.read_csv(up_file)
-                df.columns = df.columns.str.strip()
-                sv = validate_schema(df, lang)
+            if sv.get("status") not in ("no_rule", "pass"):
+                missing        = sv.get("missing_columns", [])
+                extra          = sv.get("extra_columns", [])
+                type_mismatches = sv.get("type_mismatches", [])
 
-                if sv.get("status") not in ("no_rule", "pass"):
-                    missing        = sv.get("missing_columns", [])
-                    extra          = sv.get("extra_columns", [])
-                    type_mismatches = sv.get("type_mismatches", [])
+                # ── Column name mismatch → BLOCK upload ──────────────────
+                if missing or extra:
+                    parts = []
+                    if missing:
+                        parts.append(f"<b>{get_text('schema_missing_cols', lang)}:</b> {', '.join(missing)}")
+                    if extra:
+                        parts.append(f"<b>{get_text('schema_extra_cols', lang)}:</b> {', '.join(extra)}")
+                    st.markdown(_alert_html("<br>".join(parts), kind="error"), unsafe_allow_html=True)
+                    can_upload = False
 
-                    # ── Column name mismatch → BLOCK upload ──────────────────
-                    if missing or extra:
-                        parts = []
-                        if missing:
-                            parts.append(f"<b>{get_text('schema_missing_cols', lang)}:</b> {', '.join(missing)}")
-                        if extra:
-                            parts.append(f"<b>{get_text('schema_extra_cols', lang)}:</b> {', '.join(extra)}")
-                        st.markdown(_alert_html("<br>".join(parts), kind="error"), unsafe_allow_html=True)
-                        return
+                # ── Type mismatch only → Show inline warning ─────────
+                if type_mismatches:
+                    cols = [m["column"] for m in type_mismatches]
+                    st.markdown(_alert_html(f"<b>Type Warnings:</b> Mismatched types in columns: {', '.join(cols)}", kind="warning"), unsafe_allow_html=True)
 
-                    # ── Type mismatch only → WARN, still allow upload ─────────
-                    if type_mismatches:
-                        cols = [m["column"] for m in type_mismatches]
-                        st.toast(f"⚠️ Type warnings: {', '.join(cols)}")
+        except Exception:
+            pass  # No schema rule defined or parse error → allow showing the upload button anyway
 
-            except Exception:
-                pass  # No schema rule defined → allow upload
+        # 2. Upload Button (Only if schema blocking errors did not occur)
+        if can_upload:
+            if st.button(f":material/upload: {get_text('upload_file', lang)}", use_container_width=True, type="primary"):
+                # Validate Duplicate Filename
+                file_path = os.path.join(UPLOADS_DIR, up_file.name)
+                if os.path.exists(file_path):
+                    st.markdown(
+                        _alert_html(f"File '<b>{up_file.name}</b>' already exists. Please rename or delete the existing file.", kind="warning"),
+                        unsafe_allow_html=True,
+                    )
+                    return
 
+                # Save File
+                try:
+                    up_file.seek(0)
+                    save_file(up_file)
+                except Exception as e:
+                    st.markdown(_alert_html(get_text("error_upload", lang, error=str(e)), kind="error"), unsafe_allow_html=True)
+                    return
 
-            # 3. Save File (only reached if schema is valid)
-            try:
-                up_file.seek(0)
-                save_file(up_file)
-            except Exception as e:
-                st.markdown(_alert_html(get_text("error_upload", lang, error=str(e)), kind="error"), unsafe_allow_html=True)
-                return
-
-            st.toast(get_text("success_upload", lang), icon="✅")
-            st.rerun()
+                st.toast(get_text("success_upload", lang), icon="✅")
+                st.rerun()
 
 
 

@@ -1261,12 +1261,38 @@ OVERVIEW_FEATURE_STYLES = """
         text-wrap: balance;
     }
 
-    .two-columns {
+    /* ── Objective Split Layout (image left, cards right) ── */
+    .obj-split-layout {
         display: grid;
-        grid-template-columns: 1fr 1.2fr;
-        gap: 40px;
+        grid-template-columns: 1fr 3fr;
+        gap: 32px;
         margin-bottom: 50px;
-        align-items: flex-start;
+        align-items: stretch;
+    }
+    .obj-split-image {
+        border-radius: 16px;
+        overflow: hidden;
+        border: 1px solid rgba(255,255,255,0.08);
+        box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        position: relative;
+    }
+    .obj-split-image::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(135deg, rgba(59,130,246,0.12) 0%, transparent 60%);
+        pointer-events: none;
+    }
+    .obj-split-image img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+    }
+    .obj-split-cards {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
     }
 
     .column-wrapper {

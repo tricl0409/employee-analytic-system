@@ -423,26 +423,6 @@ def evaluate_outlier_method(s: pd.Series, lang: str = "en") -> Dict[str, str]:
         return {**base, "method": "Modified Z-Score", "reason": get_text("rec_mod_z", lang), "skewness": skew}
 
 # =============================================================================
-# COLUMN REPORT
-# =============================================================================
-
-def generate_column_report(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Generate a compact per-column summary: dtype, missing count/percentage,
-    and unique value count.  Used in the Overview preview panel.
-    """
-    if df.empty:
-        return pd.DataFrame()
-
-    return pd.DataFrame({
-        "Column Name": df.columns,
-        "Type": df.dtypes.astype(str),
-        "Missing": df.isnull().sum(),
-        "Missing (%)": (df.isnull().mean() * 100).round(1).astype(str) + "%",
-        "Unique Values": df.nunique(),
-    }).reset_index(drop=True)
-
-# =============================================================================
 # DATA SUMMARY (Statistical Overview)
 # =============================================================================
 
