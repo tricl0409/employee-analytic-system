@@ -211,8 +211,22 @@ def encode_for_correlation(df: pd.DataFrame) -> pd.DataFrame:
         df_enc = df_enc.drop(columns=drop_cols)
 
     # ── Phase 1: Apply domain-knowledge mapping ──────────────────────────
+    cols_to_drop = []
     for col in df_enc.columns:
         col_lower = col.lower()
+        if col_lower in ["income", "salary", "class"]:
+            mapping = _CORRELATION_ENCODING_MAP.get("income")
+            if df_enc[col].dtype.name == "category":
+                df_enc[col] = df_enc[col].astype(str)
+            mapped_vals = pd.to_numeric(df_enc[col].map(mapping), errors="coerce")
+            
+            # One-hot encode income
+            df_enc["is_high_income"] = (mapped_vals == 1).astype(int)
+            df_enc["is_standard_income"] = (mapped_vals == 0).astype(int)
+            
+            cols_to_drop.append(col)
+            continue
+            
         mapping = _CORRELATION_ENCODING_MAP.get(col_lower)
         if mapping is None:
             continue
@@ -223,6 +237,9 @@ def encode_for_correlation(df: pd.DataFrame) -> pd.DataFrame:
         # Map known values; unmapped values become NaN (coerced safely)
         df_enc[col] = df_enc[col].map(mapping)
         df_enc[col] = pd.to_numeric(df_enc[col], errors="coerce")
+        
+    if cols_to_drop:
+        df_enc = df_enc.drop(columns=cols_to_drop)
 
     # ── Phase 2: Fallback for remaining non-numeric columns ──────────────
     remaining_cat = df_enc.select_dtypes(

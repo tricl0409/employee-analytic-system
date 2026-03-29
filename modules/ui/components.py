@@ -976,29 +976,6 @@ class UiComponents:
 
         rows_removed = rows_before - rows_after
 
-        # ── Comparison table rows ─────────────────────────────────────────
-        comparison = stats.get("comparison", [])
-        table_rows_html = ""
-        for metric_name, before_val, after_val in comparison:
-            # Color: green if resolved (after == 0), else amber
-            if after_val == 0:
-                after_color = OK
-                after_display = f'<span style="color:{OK};font-weight:700;">✓ 0</span>'
-            else:
-                after_color = WARN
-                after_display = f'<span style="color:{WARN};font-weight:700;">{after_val:,}</span>'
-
-            table_rows_html += (
-                '<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">'
-                '<td style="padding:10px 14px;font-size:0.82rem;color:rgba(255,255,255,0.7);'
-                f'font-weight:600;">{metric_name}</td>'
-                '<td style="padding:10px 14px;text-align:center;font-size:0.88rem;'
-                f'font-weight:700;color:{WARN};">{before_val:,}</td>'
-                f'<td style="padding:10px 14px;text-align:center;font-size:0.88rem;">'
-                f'{after_display}</td>'
-                '</tr>'
-            )
-
         st.markdown(
             '<div class="pp-done-banner" style="'
             'background:linear-gradient(135deg,rgba(166,206,57,0.09) 0%,rgba(91,134,229,0.06) 100%);'
@@ -1042,26 +1019,6 @@ class UiComponents:
             f'<div style="color:{WARN};font-size:1.3rem;font-weight:800;">{rows_removed:,}</div>'
             '</div>'
             '</div>'
-
-            # ── Comparison Table ──────────────────────────────────────────
-            '<div style="border-top:1px solid rgba(255,255,255,0.06);padding-top:16px;margin-bottom:16px;">'
-            '<div style="font-size:0.75rem;font-weight:700;color:rgba(255,255,255,0.5);'
-            'text-transform:uppercase;letter-spacing:0.8px;margin-bottom:12px;">'
-            'Data Quality — Before vs After</div>'
-            '<table style="width:100%;border-collapse:collapse;">'
-            '<thead><tr style="border-bottom:1px solid rgba(255,255,255,0.1);">'
-            '<th style="padding:8px 14px;text-align:left;font-size:0.7rem;'
-            'text-transform:uppercase;letter-spacing:0.8px;color:rgba(255,255,255,0.4);'
-            'font-weight:600;">Metric</th>'
-            '<th style="padding:8px 14px;text-align:center;font-size:0.7rem;'
-            'text-transform:uppercase;letter-spacing:0.8px;color:rgba(255,255,255,0.4);'
-            'font-weight:600;">Before</th>'
-            '<th style="padding:8px 14px;text-align:center;font-size:0.7rem;'
-            'text-transform:uppercase;letter-spacing:0.8px;color:rgba(255,255,255,0.4);'
-            'font-weight:600;">After</th>'
-            '</tr></thead>'
-            f'<tbody>{table_rows_html}</tbody>'
-            '</table></div>'
 
             # ── Save info footer ──────────────────────────────────────────
             '<div style="color:var(--text-secondary);font-size:0.83rem;'
