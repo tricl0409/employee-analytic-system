@@ -927,7 +927,7 @@ def _render_section4_edu_age(
 
 
 # ==============================================================================
-# SECTION 5 — Age & Gender (Line Chart)
+# SECTION 5 — Age & Gender (Grouped Bar)
 # ==============================================================================
 
 def _render_section5_age_gender(
@@ -935,7 +935,7 @@ def _render_section5_age_gender(
     cols: dict[str, str | None],
     income_col: str,
 ) -> None:
-    """Render line chart: Age Group × Gender → High Income Rate."""
+    """Render grouped horizontal bar: Age Group × Gender → High Income Rate."""
     age_col = cols.get("age")
     sex_col = cols.get("sex")
 
@@ -951,64 +951,61 @@ def _render_section5_age_gender(
     )
 
     hi_mask = _high_mask(df_binned[income_col])
-    
+
     # Calculate High Income Rate: Group by Age and Sex
     ct_total = pd.crosstab(df_binned[age_col].astype(str), df_binned[sex_col].astype(str).str.strip().str.title())
     ct_hi = pd.crosstab(df_binned[age_col].astype(str), df_binned[sex_col].astype(str).str.strip().str.title(), values=hi_mask, aggfunc="sum")
     rate_df = (ct_hi / ct_total.replace(0, np.nan) * 100).fillna(0)
-    
-    # Sort Age (X-axis)
+
+    # Sort Age groups ascending (youngest at bottom for horizontal bar)
     sorted_age = sorted(rate_df.index, key=bin_label_sort_key)
     rate_df = rate_df.reindex(sorted_age)
-    
-    sex_colors = {"Male": "rgba(59,130,246,0.85)", "Female": "rgba(236,72,153,0.85)"}
-    
+
+    sex_colors = {"Male": "rgba(59,130,246,0.75)", "Female": "rgba(236,72,153,0.75)"}
+
     col_chart, col_insight = st.columns([3, 2], gap="medium")
-    
+
     with col_chart:
         fig = go.Figure()
-        
+
         for gender_label in rate_df.columns:
-            # Try to match color
-            c = "rgba(255,159,67,0.85)"
-            for key, val in sex_colors.items():
-                if key.lower() == gender_label.lower():
-                    c = val
-                    break
-                    
-            fig.add_trace(go.Scatter(
-                x=rate_df.index.tolist(),
-                y=rate_df[gender_label].values,
-                mode="lines+markers",
+            color = sex_colors.get(gender_label, "rgba(255,159,67,0.75)")
+            vals = rate_df[gender_label].round(1).values
+
+            fig.add_trace(go.Bar(
+                y=rate_df.index.tolist(),
+                x=vals,
                 name=gender_label,
-                line=dict(color=c, width=3),
-                marker=dict(size=8, line=dict(color="rgba(0,0,0,0.5)", width=1)),
-                hovertemplate=f"<b>{gender_label}</b><br>Age: <b>%{{x}}</b><br>High Income Rate: <b>%{{y:.1f}}%</b><extra></extra>",
+                orientation="h",
+                marker=dict(color=color),
+                text=[f"{v:.1f}%" for v in vals],
+                textposition="outside",
+                textfont=dict(size=9, color=MUTED_COLOR),
+                cliponaxis=False,
+                hovertemplate=f"<b>{gender_label}</b><br>Age: <b>%{{y}}</b><br>High Income Rate: <b>%{{x:.1f}}%</b><extra></extra>",
             ))
-            
+
         fig.update_layout(
             **_base_layout(),
-            height=320,
+            height=max(300, len(rate_df) * 45),
+            barmode="group",
+            bargap=0.20,
+            bargroupgap=0.08,
             showlegend=True,
             legend=dict(
-                orientation="h", y=-0.2, x=0.5, xanchor="center",
+                orientation="h", y=-0.18, x=0.5, xanchor="center",
                 font=dict(size=10, color=MUTED_COLOR),
             ),
-            margin=dict(l=40, r=20, t=20, b=40),
+            margin=dict(l=90, r=60, t=20, b=50),
             xaxis=dict(
-                title=dict(text="Age Group", font=dict(color=MUTED_COLOR, size=10)),
-                tickfont=dict(color=MUTED_COLOR, size=9),
-                gridcolor=GRID_COLOR,
-            ),
-            yaxis=dict(
                 title=dict(text="High Income Rate (%)", font=dict(color=MUTED_COLOR, size=10)),
                 tickfont=dict(color=MUTED_COLOR, size=9),
                 gridcolor=GRID_COLOR,
-                range=[0, min(max(rate_df.max().max() * 1.15, 10), 100)],
             ),
+            yaxis=dict(tickfont=dict(color=MUTED_COLOR, size=10)),
         )
-        st.plotly_chart(apply_global_theme(fig), use_container_width=True, key="ch_age_sex_line")
-        
+        st.plotly_chart(apply_global_theme(fig), use_container_width=True, key="ch_age_sex_bar")
+
     with col_insight:
         st.markdown("<div style='margin-top:20px;'></div>", unsafe_allow_html=True)
         insight_parts = []
@@ -1017,20 +1014,25 @@ def _render_section5_age_gender(
                 peak_age = rate_df[gender_label].idxmax()
                 peak_rate = rate_df[gender_label].max()
                 insight_parts.append(f"<b>{gender_label}s</b> peak at <b>{peak_age}</b> ({peak_rate:.1f}%).")
-        
+
+        # Compute gender gap at peak
+        gap_series = rate_df.get("Male", pd.Series(dtype=float)) - rate_df.get("Female", pd.Series(dtype=float))
+        max_gap_age = gap_series.idxmax() if not gap_series.empty else "N/A"
+        max_gap_val = round(gap_series.max(), 1) if not gap_series.empty else 0
+
         st.markdown(
             _insight_box(
-                " ".join(insight_parts) + 
-                " The gap between genders widens significantly during peak career years, "
-                "suggesting differing career trajectories or systemic factors affecting "
-                "earning potential over time."
+                " ".join(insight_parts) +
+                f" The widest gender gap is at <b>{max_gap_age}</b> ({max_gap_val} pp), "
+                "suggesting that career progression and earning trajectory diverge "
+                "most significantly during this life stage."
             ),
             unsafe_allow_html=True,
         )
 
 
 # ==============================================================================
-# SECTION 6 — Education & Gender (Line Chart)
+# SECTION 6 — Education & Gender (Grouped Bar)
 # ==============================================================================
 
 def _render_section6_edu_gender(
@@ -1038,7 +1040,7 @@ def _render_section6_edu_gender(
     cols: dict[str, str | None],
     income_col: str,
 ) -> None:
-    """Render line chart: Education × Gender → High Income Rate."""
+    """Render grouped horizontal bar: Education × Gender → High Income Rate."""
     edu_col = cols.get("education")
     sex_col = cols.get("sex")
 
@@ -1054,66 +1056,63 @@ def _render_section6_edu_gender(
     )
 
     hi_mask = _high_mask(df_binned[income_col])
-    
+
     # Calculate High Income Rate: Group by Education and Sex
     ct_total = pd.crosstab(df_binned[edu_col].astype(str), df_binned[sex_col].astype(str).str.strip().str.title())
     ct_hi = pd.crosstab(df_binned[edu_col].astype(str), df_binned[sex_col].astype(str).str.strip().str.title(), values=hi_mask, aggfunc="sum")
     rate_df = (ct_hi / ct_total.replace(0, np.nan) * 100).fillna(0)
-    
-    # Sort Education (X-axis) using backward _EDU_ORDER (Basic to Advanced)
+
+    # Sort Education — Basic at bottom, Advanced at top (for horizontal bar)
     sorted_edu = [e for e in reversed(_EDU_ORDER) if e in rate_df.index]
     remaining = [e for e in rate_df.index if e not in sorted_edu]
     sorted_edu = remaining + sorted_edu
     rate_df = rate_df.reindex(sorted_edu)
-    
-    sex_colors = {"Male": "rgba(59,130,246,0.85)", "Female": "rgba(236,72,153,0.85)"}
-    
+
+    sex_colors = {"Male": "rgba(59,130,246,0.75)", "Female": "rgba(236,72,153,0.75)"}
+
     col_chart, col_insight = st.columns([3, 2], gap="medium")
-    
+
     with col_chart:
         fig = go.Figure()
-        
+
         for gender_label in rate_df.columns:
-            # Try to match color
-            c = "rgba(255,159,67,0.85)"
-            for key, val in sex_colors.items():
-                if key.lower() == gender_label.lower():
-                    c = val
-                    break
-                    
-            fig.add_trace(go.Scatter(
-                x=rate_df.index.tolist(),
-                y=rate_df[gender_label].values,
-                mode="lines+markers",
+            color = sex_colors.get(gender_label, "rgba(255,159,67,0.75)")
+            vals = rate_df[gender_label].round(1).values
+
+            fig.add_trace(go.Bar(
+                y=rate_df.index.tolist(),
+                x=vals,
                 name=gender_label,
-                line=dict(color=c, width=3),
-                marker=dict(size=8, line=dict(color="rgba(0,0,0,0.5)", width=1)),
-                hovertemplate=f"<b>{gender_label}</b><br>Education: <b>%{{x}}</b><br>High Income Rate: <b>%{{y:.1f}}%</b><extra></extra>",
+                orientation="h",
+                marker=dict(color=color),
+                text=[f"{v:.1f}%" for v in vals],
+                textposition="outside",
+                textfont=dict(size=9, color=MUTED_COLOR),
+                cliponaxis=False,
+                hovertemplate=f"<b>{gender_label}</b><br>Education: <b>%{{y}}</b><br>High Income Rate: <b>%{{x:.1f}}%</b><extra></extra>",
             ))
-            
+
         fig.update_layout(
             **_base_layout(),
-            height=320,
+            height=max(300, len(rate_df) * 45),
+            barmode="group",
+            bargap=0.20,
+            bargroupgap=0.08,
             showlegend=True,
             legend=dict(
-                orientation="h", y=-0.2, x=0.5, xanchor="center",
+                orientation="h", y=-0.18, x=0.5, xanchor="center",
                 font=dict(size=10, color=MUTED_COLOR),
             ),
-            margin=dict(l=40, r=20, t=20, b=40),
+            margin=dict(l=120, r=60, t=20, b=50),
             xaxis=dict(
-                title=dict(text="Education Level", font=dict(color=MUTED_COLOR, size=10)),
-                tickfont=dict(color=MUTED_COLOR, size=9),
-                gridcolor=GRID_COLOR,
-            ),
-            yaxis=dict(
                 title=dict(text="High Income Rate (%)", font=dict(color=MUTED_COLOR, size=10)),
                 tickfont=dict(color=MUTED_COLOR, size=9),
                 gridcolor=GRID_COLOR,
-                range=[0, min(max(rate_df.max().max() * 1.15, 10), 100)],
             ),
+            yaxis=dict(tickfont=dict(color=MUTED_COLOR, size=10)),
         )
-        st.plotly_chart(apply_global_theme(fig), use_container_width=True, key="ch_edu_sex_line")
-        
+        st.plotly_chart(apply_global_theme(fig), use_container_width=True, key="ch_edu_sex_bar")
+
     with col_insight:
         st.markdown("<div style='margin-top:20px;'></div>", unsafe_allow_html=True)
         insight_parts = []
@@ -1122,13 +1121,18 @@ def _render_section6_edu_gender(
                 peak_edu = rate_df[gender_label].idxmax()
                 peak_rate = rate_df[gender_label].max()
                 insight_parts.append(f"<b>{gender_label}s</b> peak at <b>{peak_edu}</b> ({peak_rate:.1f}%).")
-        
+
+        # Compute gender gap at peak education level
+        gap_series = rate_df.get("Male", pd.Series(dtype=float)) - rate_df.get("Female", pd.Series(dtype=float))
+        max_gap_edu = gap_series.idxmax() if not gap_series.empty else "N/A"
+        max_gap_val = round(gap_series.max(), 1) if not gap_series.empty else 0
+
         st.markdown(
             _insight_box(
-                " ".join(insight_parts) + 
-                " Higher education firmly increases earning potential for both groups, "
-                "but the rate of return on education still shows significant deviations "
-                "between male and female segments."
+                " ".join(insight_parts) +
+                f" The widest gender gap appears at <b>{max_gap_edu}</b> level ({max_gap_val} pp). "
+                "Higher education increases earning potential for both groups, "
+                "but the return on education still varies significantly by gender."
             ),
             unsafe_allow_html=True,
         )
